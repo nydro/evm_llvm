@@ -29,7 +29,7 @@ namespace llvm {
   /// type can be represented by an MVT.
   class MVT {
   public:
-    enum SimpleValueType : uint8_t {
+    enum SimpleValueType : uint16_t {
       // Simple value types that aren't explicitly part of this enumeration
       // are considered extended value types.
       INVALID_SIMPLE_VALUE_TYPE = 0,
@@ -43,16 +43,17 @@ namespace llvm {
       i32            =   5,   // This is a 32 bit integer value
       i64            =   6,   // This is a 64 bit integer value
       i128           =   7,   // This is a 128 bit integer value
+      i256           =   8,   // This is a 256 bit integer value
 
       FIRST_INTEGER_VALUETYPE = i1,
-      LAST_INTEGER_VALUETYPE  = i128,
+      LAST_INTEGER_VALUETYPE  = i256,
 
-      f16            =   8,   // This is a 16 bit floating point value
-      f32            =   9,   // This is a 32 bit floating point value
-      f64            =  10,   // This is a 64 bit floating point value
-      f80            =  11,   // This is a 80 bit floating point value
-      f128           =  12,   // This is a 128 bit floating point value
-      ppcf128        =  13,   // This is a PPC 128-bit floating point value
+      f16            =   9,   // This is a 16 bit floating point value
+      f32            =  10,   // This is a 32 bit floating point value
+      f64            =  11,   // This is a 64 bit floating point value
+      f80            =  12,   // This is a 80 bit floating point value
+      f128           =  13,   // This is a 128 bit floating point value
+      ppcf128        =  14,   // This is a PPC 128-bit floating point value
 
       FIRST_FP_VALUETYPE = f16,
       LAST_FP_VALUETYPE  = ppcf128,
@@ -729,6 +730,7 @@ namespace llvm {
       case nxv2f64: return 128;
       case v5i32:
       case v5f32: return 160;
+      case i256:
       case v32i8:
       case v16i16:
       case v8i32:
@@ -850,6 +852,8 @@ namespace llvm {
         return MVT::i64;
       case 128:
         return MVT::i128;
+      case 256:
+        return MVT::i256;
       }
     }
 
