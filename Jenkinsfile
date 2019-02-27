@@ -9,7 +9,8 @@ pipeline {
           }
           steps {
             sh 'rm -rf evmbuild'
-            sh 'mkdir -p evmbuild && cd evmbuild && cmake $WORKSPACE -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=EVM && cmake --build . -- -j 8'
+            sh 'cat /proc/cpuinfo'
+            sh 'mkdir -p evmbuild && cd evmbuild && cmake $WORKSPACE -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=EVM && cmake --build .'
             sh 'rm -rf evmbuild'
           }
         }
@@ -20,7 +21,7 @@ pipeline {
           steps {
             sh 'rm -rf evmbuild'
             sh '/usr/local/bin/brew install cmake'
-            sh 'mkdir evmbuild && cd evmbuild && /usr/local/bin/cmake ../ -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=EVM && /usr/local/bin/cmake --build . -- -j 8'
+            sh 'mkdir evmbuild && cd evmbuild && /usr/local/bin/cmake $WORKSPACE -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=EVM && /usr/local/bin/cmake --build .'
             sh 'rm -rf evmbuild'
           }
         }
