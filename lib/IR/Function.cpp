@@ -682,12 +682,13 @@ enum IIT_Info {
   IIT_PTR_TO_ELT = 33,
   IIT_VEC_OF_ANYPTRS_TO_ELT = 34,
   IIT_I128 = 35,
-  IIT_V512 = 36,
-  IIT_V1024 = 37,
-  IIT_STRUCT6 = 38,
-  IIT_STRUCT7 = 39,
-  IIT_STRUCT8 = 40,
-  IIT_F128 = 41
+  IIT_I256 = 36,
+  IIT_V512 = 37,
+  IIT_V1024 = 38,
+  IIT_STRUCT6 = 39,
+  IIT_STRUCT7 = 40,
+  IIT_STRUCT8 = 41,
+  IIT_F128 = 42
 };
 
 static void DecodeIITType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
@@ -742,6 +743,9 @@ static void DecodeIITType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
     return;
   case IIT_I128:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Integer, 128));
+    return;
+  case IIT_I256:
+    OutputTable.push_back(IITDescriptor::get(IITDescriptor::Integer, 256));
     return;
   case IIT_V1:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Vector, 1));
