@@ -28,6 +28,7 @@ StringRef Triple::getArchTypeName(ArchType Kind) {
   case avr:            return "avr";
   case bpfel:          return "bpfel";
   case bpfeb:          return "bpfeb";
+  case evm:            return "evm";
   case hexagon:        return "hexagon";
   case mips:           return "mips";
   case mipsel:         return "mipsel";
@@ -142,6 +143,8 @@ StringRef Triple::getArchTypePrefix(ArchType Kind) {
 
   case riscv32:
   case riscv64:     return "riscv";
+
+  case evm:         return "evm";
   }
 }
 
@@ -307,6 +310,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("wasm64", wasm64)
     .Case("renderscript32", renderscript32)
     .Case("renderscript64", renderscript64)
+    .Case("evm", evm)
     .Default(UnknownArch);
 }
 
@@ -433,6 +437,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("wasm64", Triple::wasm64)
     .Case("renderscript32", Triple::renderscript32)
     .Case("renderscript64", Triple::renderscript64)
+    .Case("evm", Triple::evm)
     .Default(Triple::UnknownArch);
 
   // Some architectures require special parsing logic just to compute the
@@ -649,6 +654,7 @@ static Triple::ObjectFormatType getDefaultFormat(const Triple &T) {
   case Triple::avr:
   case Triple::bpfeb:
   case Triple::bpfel:
+  case Triple::evm:
   case Triple::hexagon:
   case Triple::lanai:
   case Triple::hsail:
@@ -1261,6 +1267,9 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::wasm64:
   case llvm::Triple::renderscript64:
     return 64;
+
+  case llvm::Triple::evm:
+    return 256;
   }
   llvm_unreachable("Invalid architecture value");
 }
@@ -1346,6 +1355,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::UnknownArch:
   case Triple::arc:
   case Triple::avr:
+  case Triple::evm:
   case Triple::hexagon:
   case Triple::kalimba:
   case Triple::lanai:
