@@ -9,8 +9,9 @@ pipeline {
           }
           steps {
             sh 'rm -rf evmbuild'
-            sh 'cat /proc/cpuinfo'
-            sh 'mkdir -p evmbuild && cd evmbuild && cmake $WORKSPACE -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=EVM && cmake --build .'
+            sh '''cat /proc/cpuinfo
+whoami'''
+            sh 'mkdir -p evmbuild && cd evmbuild && cmake $WORKSPACE -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=EVM && sudo cmake --build .'
             sh 'rm -rf evmbuild'
           }
         }
@@ -26,6 +27,6 @@ pipeline {
           }
         }
       }
-    }  
+    }
   }
 }
