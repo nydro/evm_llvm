@@ -8,11 +8,12 @@ pipeline {
             label 'linux'
           }
           steps {
-            sh 'rm -rf evmbuild'
+            sh '''sudo rm -rf evmbuild
+pwd'''
             sh '''cat /proc/cpuinfo
 whoami'''
             sh 'mkdir -p evmbuild && cd evmbuild && sudo cmake $WORKSPACE -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=EVM && sudo make -j 8'
-            sh 'rm -rf evmbuild'
+            sh 'sudo rm -rf evmbuild'
           }
         }
         stage('macos') {
