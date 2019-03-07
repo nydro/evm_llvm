@@ -8,7 +8,8 @@ pipeline {
   stages {
     stage('linux') {
       steps {
-        sh '''rm -rf evmbuild
+        sh '''sudo su
+rm -rf evmbuild
 '''
         sh '''cat /proc/cpuinfo
 whoami'''
