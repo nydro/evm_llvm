@@ -8,13 +8,12 @@ pipeline {
   stages {
     stage('linux') {
       steps {
-        sh '''sudo su
-rm -rf evmbuild
+        sh '''sudo rm -rf evmbuild
 '''
         sh '''cat /proc/cpuinfo
-whoami'''
+'''
         sh 'mkdir -p evmbuild && cd evmbuild && sudo cmake $WORKSPACE -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=EVM && sudo make -j 4'
-        sh 'rm -rf evmbuild'
+        sh 'sudo rm -rf evmbuild'
       }
     }
   }
