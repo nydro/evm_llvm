@@ -793,11 +793,13 @@ class RegisterOperand<RegisterClass regclass, string pm = "printOperand">
 }
 
 let OperandType = "OPERAND_IMMEDIATE" in {
-def i1imm  : Operand<i1>;
-def i8imm  : Operand<i8>;
-def i16imm : Operand<i16>;
-def i32imm : Operand<i32>;
-def i64imm : Operand<i64>;
+def i1imm   : Operand<i1>;
+def i8imm   : Operand<i8>;
+def i16imm  : Operand<i16>;
+def i32imm  : Operand<i32>;
+def i64imm  : Operand<i64>;
+def i128imm : Operand<i128>;
+def i256imm : Operand<i256>;
 
 def f32imm : Operand<f32>;
 def f64imm : Operand<f64>;
