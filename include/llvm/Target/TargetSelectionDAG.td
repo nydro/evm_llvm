@@ -978,6 +978,19 @@ def truncstorei32 : PatFrag<(ops node:$val, node:$ptr),
   let IsStore = 1;
   let MemoryVT = i32;
 }
+
+def truncstorei64 : PatFrag<(ops node:$val, node:$ptr),
+                            (truncstore node:$val, node:$ptr)> {
+  let IsStore = 1;
+  let MemoryVT = i64;
+}
+
+def truncstorei128 : PatFrag<(ops node:$val, node:$ptr),
+                             (truncstore node:$val, node:$ptr)> {
+  let IsStore = 1;
+  let MemoryVT = i128;
+}
+
 def truncstoref32 : PatFrag<(ops node:$val, node:$ptr),
                             (truncstore node:$val, node:$ptr)> {
   let IsStore = 1;
