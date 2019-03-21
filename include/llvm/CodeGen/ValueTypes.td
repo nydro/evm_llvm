@@ -25,7 +25,7 @@ def i16    : ValueType<16 ,  4>;   // 16-bit integer value
 def i32    : ValueType<32 ,  5>;   // 32-bit integer value
 def i64    : ValueType<64 ,  6>;   // 64-bit integer value
 def i128   : ValueType<128,  7>;   // 128-bit integer value
-def i256   : ValueType<256,  8>;   // 128-bit integer value
+def i256   : ValueType<256,  8>;   // 256-bit integer value
 def f16    : ValueType<16 ,  9>;   // 16-bit floating point value
 def f32    : ValueType<32 , 10>;   // 32-bit floating point value
 def f64    : ValueType<64 , 11>;   // 64-bit floating point value
