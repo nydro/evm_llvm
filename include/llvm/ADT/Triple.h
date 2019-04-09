@@ -190,7 +190,8 @@ public:
     Hurd,       // GNU/Hurd
     WASI,       // Experimental WebAssembly OS
     Emscripten,
-    LastOSType = Emscripten
+    EVM,        // Ethereum Virtual Machine
+    LastOSType = EVM
   };
   enum EnvironmentType {
     UnknownEnvironment,
@@ -226,6 +227,7 @@ public:
     MachO,
     Wasm,
     XCOFF,
+    EVMJson,
   };
 
 private:
@@ -603,6 +605,10 @@ public:
     return getOS() == Triple::Emscripten;
   }
 
+  bool isOSEVM() const {
+    return getOS() == Triple::EVM;
+  }
+
   /// Tests whether the OS uses glibc.
   bool isOSGlibc() const {
     return (getOS() == Triple::Linux || getOS() == Triple::KFreeBSD ||
@@ -638,6 +644,10 @@ public:
   /// Tests whether the OS uses the XCOFF binary format.
   bool isOSBinFormatXCOFF() const {
     return getObjectFormat() == Triple::XCOFF;
+  }
+
+  bool isOSBinFormatEVM() const {
+    return getObjectFormat() == Triple::EVMJson;
   }
 
   /// Tests whether the target is the PS4 CPU
