@@ -187,7 +187,8 @@ public:
     HermitCore, // HermitCore Unikernel/Multikernel
     Hurd,       // GNU/Hurd
     WASI,       // Experimental WebAssembly OS
-    LastOSType = WASI
+    EVM,        // Ethereum Virtual Machine
+    LastOSType = EVM
   };
   enum EnvironmentType {
     UnknownEnvironment,
@@ -220,6 +221,7 @@ public:
     ELF,
     MachO,
     Wasm,
+    EVMJson,
   };
 
 private:
@@ -592,6 +594,10 @@ public:
     return getOS() == Triple::WASI;
   }
 
+  bool isOSEVM() const {
+    return getOS() == Triple::EVM;
+  }
+
   /// Tests whether the OS uses glibc.
   bool isOSGlibc() const {
     return (getOS() == Triple::Linux || getOS() == Triple::KFreeBSD ||
@@ -617,6 +623,10 @@ public:
   /// Tests whether the OS uses the Wasm binary format.
   bool isOSBinFormatWasm() const {
     return getObjectFormat() == Triple::Wasm;
+  }
+
+  bool isOSBinFormatEVM() const {
+    return getObjectFormat() == Triple::EVMJson;
   }
 
   /// Tests whether the target is the PS4 CPU
