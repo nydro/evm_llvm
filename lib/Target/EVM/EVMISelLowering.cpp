@@ -505,6 +505,45 @@ SDValue EVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
   CCState CCInfo(CallConv, IsVarArg, MF, ArgLocs, *DAG.getContext());
   CCInfo.AnalyzeCallOperands(Outs, CC_EVM);
 
+  // Analyze return value location
+  SmallVector<CCValAssign, 16> RVLocs;
+  CCState RetCCInfo(CallConv, IsVarArg, DAG.getMachineFunction(),
+                    ArgLocs, *DAG.getContenxt());
+  RetCCInfo.allocateStack(CCInfo.getNextStackOffset(), 256/8);
+  RetCCInfo.AnalyzeCallResult(Ins, RetCC_EVM);
+
+
+  // Insert CALLSEQ_START
+  Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, DL);
+
+  // Move operands on to stack
+  SmallVectorImpl<SDValue> &OutVals = CLI.OutVals;
+  for (unsigned i = 0; i < Outs.size(); ++i) {
+    const ISD::OutputArg &Out = Outs[i];
+    SDValue &OutVal = OutVals[i];
+
+    if (Out.Flags.isByVal() && Out.Flags.getByValSize() != 0) {
+      auto &MFI = MF.getFrameInfo();
+      unsigned OpndByValSize = Out.Flags.getByValSize();
+      int FI = MFI.CreateStackObject(OpndByValSize,
+                                     Out.Flags.getByValAlign(),
+                                     /*isSS=*/false);
+      if (OpndByValSize > 256) {
+        llvm_unreachable("unimplemented");
+      }
+
+      // Move the argument on to stack.
+      SDValue store = DAG.getNode(EVMISD::STOREARGUMENT, DL,
+                                  MVT::Other,
+                                  OutVal.getValueType(),
+                                  Chain, OutVal);
+
+    } else {
+      llvm_unreachable("unimplemented");
+    }
+
+  }
+
 
   if (IsVarArg) { llvm_unreachable("unimplemented."); }
 
@@ -524,7 +563,7 @@ SDValue EVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
     llvm_unreachable("unimplemented.");
   }
 
-  // Compute the operands for the CALLn node.
+  // Compute the operands for the CALL node.
   SmallVector<SDValue, 16> Ops;
   Ops.push_back(Chain);
   Ops.push_back(Callee);
@@ -545,6 +584,10 @@ SDValue EVMTargetLowering::LowerCall(CallLoweringInfo &CLI,
     InVals.push_back(Res);
     Chain = Res.getValue(1);
   }
+
+  Chain = DAG.getCALLSEQ_END(
+            Chain, DAG.getConstant(NumBytes, CLI.DL, PtrVT, true),
+
 
   return Chain;
 }

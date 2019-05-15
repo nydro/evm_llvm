@@ -90,6 +90,23 @@ bool EVMConvertRegToStack::runOnMachineFunction(MachineFunction &MF) {
         continue;
       }
 
+      if (MI.getOpcode() == EVM::RETURN_r) {
+        // Before:
+        // RETURN_r $ret
+        // After:
+        // PUSH32 $ret
+        // RETURN
+
+        assert(MI.getNumOperands() == 2 && "PUSH32_r's number of operands must be 2.");
+
+        auto &MO = MI.getOperand(0);
+        if (MO.isImm() || MO.isCImm()) {
+          BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(EVM::PUSH32)).add(MO);
+        } else if (MO.isReg()) {
+
+        }
+      }
+
       for (MachineOperand &MO : reverse(MI.explicit_uses())) {
         // Immediate value: insert `PUSH32 Imm` before instruction.
         if (MO.isImm()) {

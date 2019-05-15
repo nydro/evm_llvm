@@ -50,7 +50,11 @@ SDTypeProfile<1, 2, [SDTCisVT<2, i256>]>;
 def SDT_EVMSelectCC : SDTypeProfile<1, 3, [SDTCisSameAs<0, 1>,
                                     SDTCisSameAs<1, 2>, SDTCisVT<3, i256>]>;
 
-def SDT_EVMArgument : SDTypeProfile<1, 1, [SDTCisVT<1, i256>]>;
+// 0 results, 1st operand: value, 2nd operand: frameindex
+def SDT_EVMStoreArgument : SDTypeProfile<0, 2, [SDTCisVT<1, i256>, SDTCisVT<1, i256>]>;
+// 1 result, operand: frameindex
+def SDT_EVMLoadArgument : SDTypeProfile<1, 1, [SDTCisVT<1, i256>]>;
+
 def SDT_EVMMove : SDTypeProfile<0, 2, [SDTCisVT<0, i256>, SDTCisSameAs<0, 1>]>;
 
 def SDT_EVMCallSeqStart : SDCallSeqStart<[SDTCisVT<0, i256>, SDTCisVT<1, i256>]>;
@@ -60,8 +64,13 @@ def SDT_EVMCallSeqEnd   : SDCallSeqEnd  <[SDTCisVT<0, i256>, SDTCisVT<1, i256>]>
 def EVMSelectcc :
 SDNode<"EVMISD::SELECTCC", SDT_EVMSelectCC, [SDNPInGlue]>;
 
-def EVMArgument : // custom lowered node
-SDNode<"EVMISD::ARGUMENT", SDT_EVMArgument>;
+def EVMStoreArgument :
+SDNode<"EVMISD::STOREARGUMENT", SDT_EVMStoreArgument,
+       [SDNPInGlue, SDNPOutGlue, SDNPHasChain]>;
+
+def EVMLoadArgument :
+SDNode<"EVMISD::LOADARGUMENT", SDT_EVMLoadArgument,
+       [SDNPInGlue, SDNPOutGlue, SDNPHasChain]>;
 
 def EVMMove :
 SDNode<"EVMISD::MOVE", SDT_EVMMove>;
@@ -476,6 +485,9 @@ def pRETURN  : EVMPseudo<(outs), (ins), []>;
 
 def pGETLOCAL : EVMPseudo<(outs GPR:$dst), (ins i256imm:$idx), []>;
 def pPUTLOCAL : EVMPseudo<(outs), (ins GPR:$src, i256imm:$idx), []>;
+
+def pStoreToStackFrame   : EVMPseudo<(outs), (ins GPR:$dst, i256imm:$idx), []>;
+def pLoadFromStackFraome : EVMPseudo<(outs GPR:$dst), (ins i256imm:$idx), []>;
 
 //===----------------------------------------------------------------------===//
 // Patterns
