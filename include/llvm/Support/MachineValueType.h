@@ -726,11 +726,8 @@ namespace llvm {
       case nxv8f16:
       case nxv4f32:
       case nxv2f64: return 128;
-<<<<<<< HEAD
       case v5i32:
       case v5f32: return 160;
-=======
->>>>>>> Adding i256 machine value type support.
       case i256:
       case v32i8:
       case v16i16:
