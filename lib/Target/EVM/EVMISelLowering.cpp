@@ -36,8 +36,6 @@ using namespace llvm;
 
 #define DEBUG_TYPE "evm-lower"
 
-STATISTIC(NumTailCalls, "Number of tail calls");
-
 EVMTargetLowering::EVMTargetLowering(const TargetMachine &TM,
                                          const EVMSubtarget &STI)
     : TargetLowering(TM), Subtarget(STI) {
@@ -199,7 +197,7 @@ static EVMISD::NodeType getReverseCmpOpcode(ISD::CondCode CC) {
 
 SDValue EVMTargetLowering::LowerFrameIndex(SDValue Op,
                                            SelectionDAG &DAG) const {
-    int FI = cast<FrameIndexSDNode>(Op)->getIndex();
+    unsigned FI = cast<FrameIndexSDNode>(Op)->getIndex();
 
     // Record the FI so that we know how many frame slots are allocated to
     // frames.
@@ -481,13 +479,6 @@ EVMTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
   }
 }
 
-// Convert Val to a ValVT. Should not be called for CCValAssign::Indirect
-// values.
-static SDValue convertLocVTToValVT(SelectionDAG &DAG, SDValue Val,
-                                   const CCValAssign &VA, const SDLoc &DL) {
-  llvm_unreachable("unimplemented.");
-}
-
 #include "EVMGenCallingConv.inc"
 
 // Transform physical registers into virtual registers.
@@ -497,9 +488,7 @@ SDValue EVMTargetLowering::LowerFormalArguments(
     SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
 
   MachineFunction &MF = DAG.getMachineFunction();
-  EVMMachineFunctionInfo *EVMMFI = MF.getInfo<EVMMachineFunctionInfo>();
-  MachineFrameInfo &MFI = MF.getFrameInfo();
-
+  EVMMachineFunctionInfo *MFI = MF.getInfo<EVMMachineFunctionInfo>();
 
   // Instantiate virtual registers for each of the incoming value.
   // unused register will be set to UNDEF.
@@ -507,7 +496,7 @@ SDValue EVMTargetLowering::LowerFormalArguments(
   ArgsChain.push_back(Chain);
 
   // record the number of stack args.
-  EVMMFI->setNumStackArgs(Ins.size());
+  MFI->setNumStackArgs(Ins.size());
 
   for (const ISD::InputArg &In : Ins) {
     SmallVector<SDValue, 4> Opnds;
