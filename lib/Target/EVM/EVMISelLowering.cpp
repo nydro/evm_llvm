@@ -497,6 +497,7 @@ SDValue EVMTargetLowering::LowerFormalArguments(
     SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
 
   MachineFunction &MF = DAG.getMachineFunction();
+  EVMMachineFunctionInfo *EVMMFI = MF.getInfo<EVMMachineFunctionInfo>();
   MachineFrameInfo &MFI = MF.getFrameInfo();
 
 
@@ -506,14 +507,10 @@ SDValue EVMTargetLowering::LowerFormalArguments(
   ArgsChain.push_back(Chain);
 
   // record the number of stack args.
-  {
-    EVMMachineFunctionInfo &MFI = *MF.getInfo<EVMMachineFunctionInfo>();
-    MFI.setNumStackArgs(Ins.size());
-  }
+  EVMMFI->setNumStackArgs(Ins.size());
 
   for (const ISD::InputArg &In : Ins) {
     SmallVector<SDValue, 4> Opnds;
-
 
     const SDValue &idx = DAG.getTargetConstant(InVals.size(),
                                                DL, MVT::i256);

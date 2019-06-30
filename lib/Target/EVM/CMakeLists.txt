@@ -31,6 +31,8 @@ add_llvm_target(EVMCodeGen
   EVMArgumentMove.cpp
   EVMExpandPseudos.cpp
   EVMFinalization.cpp
+  RDFGraph.cpp
+  RDFRegisters.cpp
   )
 
 add_subdirectory(InstPrinter)
