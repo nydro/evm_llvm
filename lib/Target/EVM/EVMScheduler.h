@@ -16,10 +16,10 @@
 
 namespace llvm {
 /// A MachineSchedStrategy implementation for PowerPC post RA scheduling.
-class EVMPostRASchedStrategy : public PostGenericScheduler {
+class EVMSchedStrategy : public GenericScheduler {
 public:
-  EVMPostRASchedStrategy(const MachineSchedContext *C) :
-    PostGenericScheduler(C) {}
+  EVMSchedStrategy(const MachineSchedContext *C) :
+    GenericScheduler(C) {}
 
 protected:
   void initialize(ScheduleDAGMI *Dag) override;

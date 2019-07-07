@@ -62,10 +62,10 @@ EVMTargetMachine::EVMTargetMachine(const Target &T, const Triple &TT,
   initAsmInfo();
 }
 
-static ScheduleDAGInstrs *createEVMPostMachineScheduler(
+static ScheduleDAGInstrs *createEVMMachineScheduler(
   MachineSchedContext *C) {
-  ScheduleDAGMI *DAG =
-    new ScheduleDAGMI(C, llvm::make_unique<EVMPostRASchedStrategy>(C), true);
+  ScheduleDAGMILive *DAG =
+    new ScheduleDAGMILive(C, llvm::make_unique<EVMSchedStrategy>(C));
   // add DAG Mutations here.
   return DAG;
 }
@@ -74,15 +74,17 @@ namespace {
 class EVMPassConfig : public TargetPassConfig {
 public:
   EVMPassConfig(EVMTargetMachine &TM, PassManagerBase &PM)
-      : TargetPassConfig(TM, PM) {}
+      : TargetPassConfig(TM, PM) {
+    substitutePass(&PostRASchedulerID, &PostMachineSchedulerID);
+  }
 
   EVMTargetMachine &getEVMTargetMachine() const {
     return getTM<EVMTargetMachine>();
   }
 
   ScheduleDAGInstrs *
-  createPostMachineScheduler(MachineSchedContext *C) const override {
-    return createEVMPostMachineScheduler(C);
+  createMachineScheduler(MachineSchedContext *C) const override {
+    return createEVMMachineScheduler(C);
   }
 
   void addIRPasses() override;
@@ -153,6 +155,7 @@ void EVMPassConfig::addPostRegAlloc() {
   disablePass(&MachineCopyPropagationID);
   disablePass(&PostRAMachineSinkingID);
   disablePass(&FuncletLayoutID);
+  disablePass(&PostRASchedulerID);
   disablePass(&StackMapLivenessID);
   disablePass(&LiveDebugValuesID);
   disablePass(&PatchableFunctionID);
@@ -169,7 +172,6 @@ FunctionPass *EVMPassConfig::createTargetRegisterAllocator(bool) {
   return nullptr; // No reg alloc
 }
 
-static MachineSchedRegistry
-EVMPostRASchedRegistry("evm-postra",
-                       "Run EVM PostRA specific scheduler",
-                       createEVMPostMachineScheduler);
+static MachineSchedRegistry EVMCustomRegistry("evm-postra",
+                                              "Run EVM specific scheduler",
+                                              createEVMMachineScheduler);

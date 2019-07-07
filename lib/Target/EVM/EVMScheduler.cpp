@@ -11,24 +11,24 @@
 
 using namespace llvm;
 
-void EVMPostRASchedStrategy::enterMBB(MachineBasicBlock *MBB) {
-  // Custom EVM PostRA specific behavior here.
-  PostGenericScheduler::enterMBB(MBB);
+void EVMSchedStrategy::enterMBB(MachineBasicBlock *MBB) {
+  // Custom EVM specific behavior here.
+  GenericScheduler::enterMBB(MBB);
 }
 
-void EVMPostRASchedStrategy::leaveMBB() {
-  // Custom EVM PostRA specific behavior here.
-  PostGenericScheduler::leaveMBB();
+void EVMSchedStrategy::leaveMBB() {
+  // Custom EVM specific behavior here.
+  GenericScheduler::leaveMBB();
 }
 
-void EVMPostRASchedStrategy::initialize(ScheduleDAGMI *Dag) {
-  // Custom EVM PostRA specific initialization here.
-  PostGenericScheduler::initialize(Dag);
+void EVMSchedStrategy::initialize(ScheduleDAGMI *Dag) {
+  // Custom EVM specific initialization here.
+  GenericScheduler::initialize(Dag);
 }
 
-SUnit *EVMPostRASchedStrategy::pickNode(bool &IsTopNode) {
-  // Custom EVM PostRA specific scheduling here.
-  return PostGenericScheduler::pickNode(IsTopNode);
+SUnit *EVMSchedStrategy::pickNode(bool &IsTopNode) {
+  // Custom EVM specific scheduling here.
+  return GenericScheduler::pickNode(IsTopNode);
 }
 
 
