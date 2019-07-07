@@ -152,7 +152,6 @@ void EVMPassConfig::addPostRegAlloc() {
   // These functions all require the NoVRegs property.
   disablePass(&MachineCopyPropagationID);
   disablePass(&PostRAMachineSinkingID);
-  disablePass(&PostRASchedulerID);
   disablePass(&FuncletLayoutID);
   disablePass(&StackMapLivenessID);
   disablePass(&LiveDebugValuesID);

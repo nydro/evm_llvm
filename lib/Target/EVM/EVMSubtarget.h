@@ -46,6 +46,7 @@ class EVMSubtarget : public EVMGenSubtargetInfo {
   /// Initializes using the passed in CPU and feature strings so that we can
   /// use initializer lists for subtarget initialization.
   EVMSubtarget &initializeSubtargetDependencies(StringRef CPU, StringRef FS);
+  bool enableMachineScheduler() const override;
 
 public:
   // Initializes the data members to match that of the specified triple.

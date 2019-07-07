@@ -37,3 +37,5 @@ EVMSubtarget::EVMSubtarget(const Triple &TT, const std::string &CPU,
       FrameLowering(initializeSubtargetDependencies(CPU, FS)),
       InstrInfo(), TLInfo(TM, *this) {
 }
+
+bool EVMSubtarget::enableMachineScheduler() const { return true; }
