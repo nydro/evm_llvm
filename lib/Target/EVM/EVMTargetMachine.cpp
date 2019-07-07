@@ -11,7 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "EVM.h"
+#include "EVMSubtarget.h"
 #include "EVMTargetMachine.h"
+#include "EVMScheduler.h"
 #include "EVMTargetObjectFile.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/Passes.h"
@@ -60,6 +62,14 @@ EVMTargetMachine::EVMTargetMachine(const Target &T, const Triple &TT,
   initAsmInfo();
 }
 
+static ScheduleDAGInstrs *createEVMPostMachineScheduler(
+  MachineSchedContext *C) {
+  ScheduleDAGMI *DAG =
+    new ScheduleDAGMI(C, llvm::make_unique<EVMPostRASchedStrategy>(C), true);
+  // add DAG Mutations here.
+  return DAG;
+}
+
 namespace {
 class EVMPassConfig : public TargetPassConfig {
 public:
@@ -68,6 +78,11 @@ public:
 
   EVMTargetMachine &getEVMTargetMachine() const {
     return getTM<EVMTargetMachine>();
+  }
+
+  ScheduleDAGInstrs *
+  createPostMachineScheduler(MachineSchedContext *C) const override {
+    return createEVMPostMachineScheduler(C);
   }
 
   void addIRPasses() override;
@@ -155,3 +170,7 @@ FunctionPass *EVMPassConfig::createTargetRegisterAllocator(bool) {
   return nullptr; // No reg alloc
 }
 
+static MachineSchedRegistry
+EVMPostRASchedRegistry("evm-postra",
+                       "Run EVM PostRA specific scheduler",
+                       createEVMPostMachineScheduler);

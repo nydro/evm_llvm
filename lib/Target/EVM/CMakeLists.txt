@@ -28,6 +28,7 @@ add_llvm_target(EVMCodeGen
   EVMConvertRegToStack.cpp
   EVMShrinkPush.cpp
   EVMPrepareForLiveIntervals.cpp
+  EVMScheduler.cpp
   EVMArgumentMove.cpp
   EVMExpandPseudos.cpp
   EVMFinalization.cpp
