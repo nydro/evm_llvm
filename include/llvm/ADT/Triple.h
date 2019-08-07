@@ -228,7 +228,7 @@ public:
     MachO,
     Wasm,
     XCOFF,
-    EVMJson,
+    EVMBinary,
   };
 
 private:
@@ -652,7 +652,7 @@ public:
   }
 
   bool isOSBinFormatEVM() const {
-    return getObjectFormat() == Triple::EVMJson;
+    return getObjectFormat() == Triple::EVMBinary;
   }
 
   /// Tests whether the target is the PS4 CPU
