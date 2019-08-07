@@ -49,6 +49,7 @@ struct file_magic {
     xcoff_object_64,     ///< 64-bit XCOFF object file
     wasm_object,         ///< WebAssembly Object file
     pdb,                 ///< Windows PDB debug info file
+    evm_executable,      ///< Ethereum Binary Format
   };
 
   bool is_object() const { return V != unknown; }
