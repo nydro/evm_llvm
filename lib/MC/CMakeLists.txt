@@ -55,6 +55,7 @@ add_llvm_library(LLVMMC
   MCWinEH.cpp
   MCXCOFFObjectTargetWriter.cpp
   MCXCOFFStreamer.cpp
+  EVMBinaryObjectWriter.cpp
   MachObjectWriter.cpp
   StringTableBuilder.cpp
   SubtargetFeature.cpp
