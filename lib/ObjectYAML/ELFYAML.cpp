@@ -671,6 +671,9 @@ void ScalarEnumerationTraits<ELFYAML::ELF_REL>::enumeration(
   case ELF::EM_BPF:
 #include "llvm/BinaryFormat/ELFRelocs/BPF.def"
     break;
+  case ELF::EM_EVM:
+#include "llvm/BinaryFormat/ELFRelocs/EVM.def"
+    break;
   default:
     llvm_unreachable("Unsupported architecture");
   }
