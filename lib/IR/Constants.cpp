@@ -647,6 +647,14 @@ Constant *ConstantInt::get(Type *Ty, uint64_t V, bool isSigned) {
   return C;
 }
 
+ConstantInt *ConstantInt::get(MCContext &Context, const APInt &V) {
+  IntegerType *ITy = IntegerType::get(Context, V.getBitWidth());
+
+  // will it cause memory explosion?
+  // we could do better here.
+  return new ConstantInt(ITy, V);
+}
+
 ConstantInt *ConstantInt::get(IntegerType *Ty, uint64_t V, bool isSigned) {
   return get(Ty->getContext(), APInt(Ty->getBitWidth(), V, isSigned));
 }
