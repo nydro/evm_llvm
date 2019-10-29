@@ -8,6 +8,7 @@ add_llvm_library(LLVMMC
   MCAsmInfoELF.cpp
   MCAsmInfoWasm.cpp
   MCAsmInfoXCOFF.cpp
+  MCAsmInfoEVM.cpp
   MCAsmMacro.cpp
   MCAsmStreamer.cpp
   MCAssembler.cpp
@@ -40,6 +41,7 @@ add_llvm_library(LLVMMC
   MCSectionMachO.cpp
   MCSectionWasm.cpp
   MCSectionXCOFF.cpp
+  MCSectionEVM.cpp
   MCStreamer.cpp
   MCSubtargetInfo.cpp
   MCSymbol.cpp
@@ -55,11 +57,11 @@ add_llvm_library(LLVMMC
   MCWinEH.cpp
   MCXCOFFObjectTargetWriter.cpp
   MCXCOFFStreamer.cpp
-  EVMBinaryObjectWriter.cpp
   MachObjectWriter.cpp
   StringTableBuilder.cpp
   SubtargetFeature.cpp
   WasmObjectWriter.cpp
+  EVMBinaryObjectWriter.cpp
   WinCOFFObjectWriter.cpp
   XCOFFObjectWriter.cpp
 

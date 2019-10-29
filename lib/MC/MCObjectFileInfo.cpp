@@ -298,6 +298,10 @@ void MCObjectFileInfo::initMachOMCObjectFileInfo(const Triple &T) {
   TLSExtraDataSection = TLSTLVSection;
 }
 
+void MCObjectFileInfo::initEVMMCObjectFileInfo(const Triple &T) {
+    // TODO: implement the details.
+}
+
 void MCObjectFileInfo::initELFMCObjectFileInfo(const Triple &T, bool Large) {
   switch (T.getArch()) {
   case Triple::mips:
@@ -820,7 +824,8 @@ void MCObjectFileInfo::InitMCObjectFileInfo(const Triple &TheTriple, bool PIC,
     initELFMCObjectFileInfo(TT, LargeCodeModel);
     break;
   case Triple::EVMBinary:
-    report_fatal_error("EVMBinary obj format is unimplemented.");
+    Env = IsEVM;
+    initEVMMCObjectFileInfo(TT);
     break;
   case Triple::Wasm:
     Env = IsWasm;
