@@ -15,8 +15,6 @@
 #include "llvm/IR/PassManager.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "evm-rearrange-functions"
-
 namespace {
 
 class Function;
@@ -27,10 +25,10 @@ public:
   static char ID; // Pass identification, replacement for typeid
   EVMRearrangeFunctions();
 
-  bool runOnModule(Module &M) override;
+  bool runOnModule(Module &M);
 };
 } // end anonymous namespace
 
-ModulePass *llvm::createEVMRearrangeFunctions();
+ModulePass *createEVMRearrangeFunctions();
 
 #endif //LLVM_EVM_REARRANGE_FUNCTIONS_H
