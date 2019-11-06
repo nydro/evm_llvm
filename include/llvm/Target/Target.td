@@ -844,6 +844,7 @@ def i16imm  : Operand<i16>;
 def i32imm  : Operand<i32>;
 def i64imm  : Operand<i64>;
 def i128imm : Operand<i128>;
+def i160imm : Operand<i160>;
 def i256imm : Operand<i256>;
 
 def f32imm : Operand<f32>;
