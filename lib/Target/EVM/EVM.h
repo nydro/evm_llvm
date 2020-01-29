@@ -31,19 +31,20 @@ void LowerEVMMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
 bool LowerEVMMachineOperandToMCOperand(const MachineOperand &MO,
                                          MCOperand &MCOp, const AsmPrinter &AP);
 
-FunctionPass *createEVMISelDag(EVMTargetMachine &TM);
+FunctionPass  *createEVMISelDag(EVMTargetMachine &TM);
 
-ModulePass   *createEVMCallTransformation();
-FunctionPass *createEVMPrepareStackification();
-FunctionPass *createEVMStackification();
-FunctionPass *createEVMVRegToMem();
-FunctionPass *createEVMPrepareForLiveIntervals();
-FunctionPass *createEVMConvertRegToStack();
-FunctionPass *createEVMShrinkpush();
-FunctionPass *createEVMArgumentMove();
-FunctionPass *createEVMExpandPseudos();
-FunctionPass *createEVMExpandFramePointer();
-FunctionPass *createEVMFinalization();
+ModulePass    *createEVMCallTransformation();
+FunctionPass  *createEVMPrepareStackification();
+FunctionPass  *createEVMStackification();
+FunctionPass  *createEVMVRegToMem();
+FunctionPass  *createEVMPrepareForLiveIntervals();
+FunctionPass  *createEVMConvertRegToStack();
+FunctionPass  *createEVMShrinkpush();
+FunctionPass  *createEVMArgumentMove();
+FunctionPass  *createEVMExpandPseudos();
+FunctionPass  *createEVMExpandFramePointer();
+FunctionPass  *createEVMFinalization();
+ImmutablePass *createEVMStackAllocWrapperPass();
 
 void initializeEVMPrepareStackificationPass(PassRegistry &);
 void initializeEVMStackificationPass(PassRegistry &);
