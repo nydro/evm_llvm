@@ -25,37 +25,51 @@
 #include <memory>
 
 namespace llvm {
-class EVMStackAllocWrapperPass : ImmutablePass {
+
+typedef enum {
+  P_STACK,  // parameter
+  X_STACK,  // transfer
+  E_STACK,  // evaluate
+  L_STACK,  // local
+  NONSTACK, // Allocate on memory
+} StackRegion;
+
+typedef struct StackAssignment_ {
+  StackRegion region;
+  union {
+    // For memory allocation
+    unsigned MemorySlot;
+    // For L stack allocation
+    unsigned StackSlot;
+    unsigned ParameterSlot;
+  };
+} StackAssignment;
+
+class EVMStackAlloc : public ImmutablePass {
+public:
   static char ID;
 
-  EVMStackAllocWrapperPass() : ImmutablePass(ID) {
+  EVMStackAlloc() : ImmutablePass(ID) {
     //initializeStackAllocPassPass(*PassRegistry::getPassRegistry());
-  }
-
-  explicit EVMStackAllocWrapperPass()
-      : ImmutablePass(ID) {
-    //initializeEVMStackAllocWrapperPassPass(*PassRegistry::getPassRegistry());
   }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override;
 
   // stack allocation specific fields
-  typedef enum {
-    P_STACK, // parameter
-    X_STACK, // transfer
-    E_STACK, // evaluate
-    L_STACK, // local
-    NONSTACK,// Allocate on memory
-  } StackRegion;
 
   LiveIntervals *LIS;
 
-  DenseMap<unsigned, StackRegion> regAssignments;
+  DenseMap<unsigned, StackAssignment> regAssignments;
 
   void allocateRegistersToStack(MachineFunction &F);
 
+  StackAssignment getStackAssignment(unsigned reg) const;
+
 private:
+  // analyze a single basicblock
   void analyzeBasicBlock(MachineBasicBlock *MBB);
+
+  bool defIsLocal(MachineInstr *MI);
 
 };
 

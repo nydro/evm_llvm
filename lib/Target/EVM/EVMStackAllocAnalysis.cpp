@@ -9,6 +9,7 @@
 /// This is the AMGPU address space based alias analysis pass.
 //===----------------------------------------------------------------------===//
 
+#include "EVM.h"
 #include "EVMStackAllocAnalysis.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
@@ -21,20 +22,16 @@ using namespace llvm;
 #define DEBUG_TYPE "evm-stackalloc"
 
 // Register this pass...
-char EVMStackAllocWrapperPass::ID = 0;
+char EVMStackAlloc::ID = 0;
 
-INITIALIZE_PASS(EVMStackAllocWrapperPass, "evm-stackalloc",
+INITIALIZE_PASS(EVMStackAlloc, "evm-stackalloc",
                 "Stack Allocation Analysis", false, true)
 
-ImmutablePass *llvm::createEVMStackAllocWrapperPass() {
-  return new EVMStackAllocWrapperPass();
-}
-
-void EVMStackAllocWrapperPass::getAnalysisUsage(AnalysisUsage &AU) const {
+void EVMStackAlloc::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
 
-void EVMStackAllocWrapperPass::allocateRegistersToStack(MachineFunction &F) {
+void EVMStackAlloc::allocateRegistersToStack(MachineFunction &F) {
     // clean up previous assignments.
     regAssignments.clear();
 
@@ -44,8 +41,14 @@ void EVMStackAllocWrapperPass::allocateRegistersToStack(MachineFunction &F) {
     WorkingQueue.push(&Entry);
 
     while (!WorkingQueue.empty()) {
-      MachineBasicBlock *MBB = WorkingQueue.pop();
+      MachineBasicBlock *MBB = WorkingQueue.front();
+      WorkingQueue.pop();
       analyzeBasicBlock(MBB);
+
+      // topological order
+      for (MachineBasicBlock *NextMBB : MBB->successors()) {
+        WorkingQueue.push(NextMBB);
+      }
     }
 }
 
@@ -57,7 +60,7 @@ static unsigned getDefRegister(MachineInstr* MI) {
     return def.getReg();
 }
 
-static bool isLocal(LiveIntervals *LIS, MachineInstr *MI) {
+bool EVMStackAlloc::defIsLocal(MachineInstr *MI) {
   unsigned defReg = getDefRegister(MI);
   const LiveInterval &LI = LIS->getInterval(defReg);
   
@@ -74,7 +77,7 @@ static bool isLocal(LiveIntervals *LIS, MachineInstr *MI) {
   return LI.isLocal(MBBBegin, MBBEnd);
 }
 
-void EVMStackAllocWrapperPass::analyzeBasicBlock(MachineBasicBlock *MBB) {
+void EVMStackAlloc::analyzeBasicBlock(MachineBasicBlock *MBB) {
 
   // Iterate over the instructions in the basic block.
   
@@ -85,7 +88,7 @@ void EVMStackAllocWrapperPass::analyzeBasicBlock(MachineBasicBlock *MBB) {
         // TODO
         unsigned defReg = getDefRegister(&MI);
         regAssignments.insert(
-            std::pair<unsigned, StackRegion>(defReg, P_STACK));
+            std::pair<unsigned, StackAssignment>(defReg, {P_STACK, 0}));
         continue;
     }
 
@@ -95,16 +98,32 @@ void EVMStackAllocWrapperPass::analyzeBasicBlock(MachineBasicBlock *MBB) {
     }
     unsigned defReg = getDefRegister(&MI);
 
-    if (isLocal(this->LIS, &MI)) {
-      regAssignments.insert(std::pair<unsigned, StackRegion>(defReg, L_STACK));
+    if (defIsLocal(&MI)) {
+      regAssignments.insert(
+          std::pair<unsigned, StackAssignment>(defReg, {E_STACK, 0}));
       continue;
     }
 
     // the register liveness expands multiple basicblocks.
+    // * If the def BB dominates all sucessor BB:
+    //     * If each leaf BB has a use: X_STACK
+    //     * If some leaf BB do not have a use:
+    //     * If a child's sucessor BB also have a use: (here we need to traverse the sucessors)
+    //         * DUP before use. <-- possibly need to mark the instruction
+    //         * POP if conditionally jump to an unused sucessor.
+    // * If the def BB is a sucessor of a use BB:
+    //     * we move it to NONSTACK.
     // TODO
 
     // finally, we have to allocate it on to memory.
-    regAssignments.insert(std::pair<unsigned, StackRegion>(defReg, NONSTACK));
+    regAssignments.insert(
+        std::pair<unsigned, StackAssignment>(defReg, {NONSTACK, 0}));
   }
 
+}
+
+StackAssignment EVMStackAlloc::getStackAssignment(unsigned reg) const {
+  assert(regAssignments.find(reg) != regAssignments.end() &&
+         "Cannot find stack assignment for register.");
+  return regAssignments.lookup(reg);
 }
