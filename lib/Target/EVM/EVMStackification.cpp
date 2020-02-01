@@ -841,45 +841,26 @@ bool EVMStackification::runOnMachineFunction(MachineFunction &MF) {
            << "********** Function: " << MF.getName() << '\n';
   });
 
-  // initialize ////////////
-  reg2index.clear();
-  //////////////////////////
+  // Prepare
 
-  this->MRI = &MF.getRegInfo();
-  this->MFI = MF.getInfo<EVMMachineFunctionInfo>();
-  this->LIS = &getAnalysis<LiveIntervals>();
 
-  LLVM_DEBUG({
-    dbgs() << "dumping liveness\n";
-    for (unsigned I = 0, E = MRI->getNumVirtRegs(); I < E; ++I) {
-      unsigned Reg = Register::index2VirtReg(I);
-      const LiveInterval &LI = LIS->getInterval(Reg);
-      LI.dump();
-    }
-  });
+  // iterate BBs from the entry point.
 
-  TII = MF.getSubtarget<EVMSubtarget>().getInstrInfo();
+  // For each BBs, examine the live-ins.
+  // For each MI in BB:
+  //  For each DEF:
+  //   1. if it is assigned on memory, insert store
+  //   2. if it is assigned to P_stack:
+  //   3. if it is assigned to L_stack: do nothing, leave it on stack.
+  //   4. if it is assigned to X_stack: 
+  //  For each USE:
+  //   1. if it is NONSTACK: insert load
+  //   2. if it is not the last USE:
+  //     Insert DUP.
+  //       If a sucessor is outside the liveness range: POP it.
+  //       If a sucessor is inside the liveness range: need to find a place to pop it. (TODO: Investigate)
+  //   3. if it is the last USE: insert SWAP
 
-  for (MachineBasicBlock & MBB : MF) {
-    // at the beginning of each block iteration, the stack status should be zero.
-    // since at this momment we do not stackify register that expand across BBs.
-    StackStatus ss;
-
-    // special handling of the entry basic block
-    if (&MBB == &MF.front()) {
-      handleEntryMBB(ss, MBB);      
-    } else {
-      handleMBB(ss, MBB);
-    }
-
-    // at the end of the basicblock, there should be no elements on the stack.
-    assert(ss.getStackDepth() == 0);
-  }
-
-  MF.getProperties().set(MachineFunctionProperties::Property::TracksLiveness);
-
-  LLVM_DEBUG(
-      { MF.print(dbgs() << "After " << getPassName() << ":\n", nullptr); });
 
   return true;
 }

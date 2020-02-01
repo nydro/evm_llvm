@@ -35,6 +35,8 @@ void EVMStackAlloc::allocateRegistersToStack(MachineFunction &F) {
     // clean up previous assignments.
     regAssignments.clear();
 
+    
+
     // topologically iterate over machine basic blocks
     std::queue<MachineBasicBlock*> WorkingQueue;
     MachineBasicBlock &Entry = F.front();
@@ -52,15 +54,15 @@ void EVMStackAlloc::allocateRegistersToStack(MachineFunction &F) {
     }
 }
 
-static unsigned getDefRegister(MachineInstr* MI) {
-    unsigned numDefs = MI->getDesc().getNumDefs();
+static unsigned getDefRegister(const MachineInstr &MI) {
+    unsigned numDefs = MI.getDesc().getNumDefs();
     assert(numDefs <= 1);
-    MachineOperand &def = *MI->defs().begin();
+    const MachineOperand &def = *MI.defs().begin();
     assert(def.isReg() && def.isDef());
     return def.getReg();
 }
 
-bool EVMStackAlloc::defIsLocal(MachineInstr *MI) {
+bool EVMStackAlloc::defIsLocal(const MachineInstr &MI) const {
   unsigned defReg = getDefRegister(MI);
   const LiveInterval &LI = LIS->getInterval(defReg);
   
@@ -70,7 +72,7 @@ bool EVMStackAlloc::defIsLocal(MachineInstr *MI) {
   }
 
   // if it goes across multiple MBBs, ignore it.
-  MachineBasicBlock* MBB = MI->getParent();
+  const MachineBasicBlock* MBB = MI.getParent();
   SlotIndex MBBBegin = LIS->getMBBStartIdx(MBB);
   SlotIndex MBBEnd = LIS->getMBBEndIdx(MBB);
 
@@ -82,13 +84,17 @@ void EVMStackAlloc::analyzeBasicBlock(MachineBasicBlock *MBB) {
   // Iterate over the instructions in the basic block.
   
   for (MachineInstr &MI : *MBB) {
+    handleDef(MI);
+
+
+
     // handle stack arguments
     if (MI.getOpcode() == EVM::pSTACKARG_r) {
         // assign them to parameter stack.
         // TODO
-        unsigned defReg = getDefRegister(&MI);
+        unsigned defReg = getDefRegister(MI);
         regAssignments.insert(
-            std::pair<unsigned, StackAssignment>(defReg, {P_STACK, 0}));
+            std::pair<unsigned, StackAssignment>(defReg, {P_STACK, {0}}));
         continue;
     }
 
@@ -96,11 +102,11 @@ void EVMStackAlloc::analyzeBasicBlock(MachineBasicBlock *MBB) {
     if (MI.getDesc().getNumDefs() == 0) {
       continue;
     }
-    unsigned defReg = getDefRegister(&MI);
+    unsigned defReg = getDefRegister(MI);
 
-    if (defIsLocal(&MI)) {
+    if (defIsLocal(MI)) {
       regAssignments.insert(
-          std::pair<unsigned, StackAssignment>(defReg, {E_STACK, 0}));
+          std::pair<unsigned, StackAssignment>(defReg, {E_STACK, {0}}));
       continue;
     }
 
@@ -117,7 +123,7 @@ void EVMStackAlloc::analyzeBasicBlock(MachineBasicBlock *MBB) {
 
     // finally, we have to allocate it on to memory.
     regAssignments.insert(
-        std::pair<unsigned, StackAssignment>(defReg, {NONSTACK, 0}));
+        std::pair<unsigned, StackAssignment>(defReg, {NONSTACK, {0}}));
   }
 
 }
@@ -126,4 +132,102 @@ StackAssignment EVMStackAlloc::getStackAssignment(unsigned reg) const {
   assert(regAssignments.find(reg) != regAssignments.end() &&
          "Cannot find stack assignment for register.");
   return regAssignments.lookup(reg);
+}
+
+// return true of the register use in the machine instruction is the last use.
+bool EVMStackAlloc::regIsLastUse(const MachineInstr &MI, unsigned reg) const {
+  llvm_unreachable("unimplemented");
+  return false;
+}
+
+// return the number of uses of the register.
+unsigned EVMStackAlloc::getRegNumUses(unsigned reg) const {
+  llvm_unreachable("unimplemented");
+  return 0;
+}
+
+void EVMStackAlloc::handleDef(const MachineInstr &MI) {
+  llvm_unreachable("unimplemented");
+  unsigned defReg = getDefRegister(MI);
+
+  // look into its liveness range, assign a stack.
+
+  // PARAMETER case
+  if (MI.getOpcode() == EVM::pSTACKARG_r) {
+    // assign them to parameter stack.
+    regAssignments.insert(
+        std::pair<unsigned, StackAssignment>(defReg, {P_STACK, {0}}));
+    
+    currentStackStatus.P.insert(defReg);
+    return;
+  }
+
+  // LOCAL case
+  if (defIsLocal(MI)) {
+    // record assignment
+    regAssignments.insert(
+        std::pair<unsigned, StackAssignment>(defReg, {E_STACK, {0}}));
+
+    // update stack status
+    currentStackStatus.L.insert(defReg); 
+    return;
+  } 
+
+  // TRANSFER case 
+  // TODO
+
+
+  // last resort: locate on memory
+  regAssignments.insert(
+      std::pair<unsigned, StackAssignment>(defReg, {NONSTACK, {0}}));
+  currentStackStatus.M.insert(defReg);
+  allocateMemorySlot(defReg);
+}
+
+void EVMStackAlloc::handleUses(const MachineInstr &MI) {
+  for (const MachineOperand &MOP : MI.uses()) {
+    handleSingleUse(MI, MOP);
+  }
+}
+
+
+void EVMStackAlloc::handleSingleUse(const MachineInstr &MI, const MachineOperand &MOP) {
+  llvm_unreachable("unimplemented");
+
+  if (!MOP.isReg()) {
+    return;
+  }
+  unsigned useReg = MOP.getReg();
+
+  // get stack assignment
+
+  // update stack status
+  if (regIsLastUse(MI, useReg)) {
+    assert(regAssignments.find(useReg) != regAssignments.end());
+    StackAssignment SA = regAssignments.lookup(useReg);
+
+    switch (SA.region) {
+      case NONSTACK: {
+        // release memory slot
+        currentStackStatus.M.erase(useReg);
+        deallocateMemorySlot(useReg);
+        break;
+      }
+      case P_STACK: {
+        currentStackStatus.P.erase(useReg);
+        // TODO
+        break;
+      }
+      case X_STACK: {
+        currentStackStatus.X.erase(useReg);
+        // TODO
+        break;
+      }
+      default: {
+        llvm_unreachable("Here be dragons.");
+        break;
+      }
+    }
+  }
+
 }

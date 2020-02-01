@@ -14,7 +14,7 @@
 #include "EVM.h"
 #include "EVMTargetMachine.h"
 #include "llvm/ADT/DenseMap.h"
-
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
@@ -34,43 +34,95 @@ typedef enum {
   NONSTACK, // Allocate on memory
 } StackRegion;
 
+// We also assign a memory slot
 typedef struct StackAssignment_ {
   StackRegion region;
-  union {
-    // For memory allocation
-    unsigned MemorySlot;
-    // For L stack allocation
-    unsigned StackSlot;
-    unsigned ParameterSlot;
-  };
+  unsigned numUses;
+  // For memory allocation
+  unsigned MemorySlot;
 } StackAssignment;
+
+// The stack arrangement is as follows:
+// 
+// +----------------+
+// |                |
+// |  Evaluations   |
+// |                |
+// +----------------+
+// |                |
+// |  Locals        |
+// |                |
+// +----------------+
+// |                |
+// |  Transfers     |
+// |                |
+// +----------------+
+// |                |
+// |  Parameters    |
+// |                |
+// +----------------+
+// 
+// So we can calculate an element's depth.
+
+typedef struct {
+  std::set<unsigned> P;     // Parameter Stack
+  std::set<unsigned> X;     // Transfer Stack
+  std::set<unsigned> E;     // Evaluation Stack
+  std::set<unsigned> L;     // Local Stack
+  std::set<unsigned> M;     // Memory
+} StackStatus;
 
 class EVMStackAlloc : public ImmutablePass {
 public:
   static char ID;
 
   EVMStackAlloc() : ImmutablePass(ID) {
-    //initializeStackAllocPassPass(*PassRegistry::getPassRegistry());
+    initializeEVMStackAllocPass(*PassRegistry::getPassRegistry());
   }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override;
 
-  // stack allocation specific fields
 
-  LiveIntervals *LIS;
-
-  DenseMap<unsigned, StackAssignment> regAssignments;
 
   void allocateRegistersToStack(MachineFunction &F);
 
   StackAssignment getStackAssignment(unsigned reg) const;
 
+  bool runOnModule(Module &M) override;
+
 private:
-  // analyze a single basicblock
+  LiveIntervals *LIS;
+  MachineFunction *F;
+
+  // record assignments of each virtual register 
+  DenseMap<unsigned, StackAssignment> regAssignments;
+  StackStatus currentStackStatus;
+
+  // the pass to analyze a single basicblock
   void analyzeBasicBlock(MachineBasicBlock *MBB);
 
-  bool defIsLocal(MachineInstr *MI);
+  void handleDef(const MachineInstr &MI);
+  void handleUses(const MachineInstr &MI);
 
+  // handle a single use in the specific machine instruction. 
+  void handleSingleUse(const MachineInstr &MI, const MachineOperand &MOP);
+
+  // if the def and use is within a single BB
+  bool defIsLocal(const MachineInstr &MI) const;
+
+  // return true if the use in the specific MI is the last use of a reg
+  bool regIsLastUse(const MachineInstr &MI, unsigned reg) const;
+
+  // return numbers of uses of a register.
+  unsigned getRegNumUses(unsigned reg) const;
+
+  // helper function:
+  void assignRegister(unsigned reg, StackRegion region);
+  void removeRegisterAssignment(unsigned reg, StackRegion region);
+
+  // for allocating 
+  void deallocateMemorySlot(unsigned reg);
+  void allocateMemorySlot(unsigned reg);
 };
 
 } // end namespace llvm
