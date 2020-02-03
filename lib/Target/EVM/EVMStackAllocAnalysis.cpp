@@ -31,11 +31,13 @@ void EVMStackAlloc::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
 
+void EVMStackAlloc::initializePass() {
+  llvm_unreachable("unimplemented");
+}
+
 void EVMStackAlloc::allocateRegistersToStack(MachineFunction &F) {
     // clean up previous assignments.
-    regAssignments.clear();
-
-    
+    initializePass();
 
     // topologically iterate over machine basic blocks
     std::queue<MachineBasicBlock*> WorkingQueue;
@@ -162,6 +164,12 @@ void EVMStackAlloc::handleDef(const MachineInstr &MI) {
     return;
   }
 
+  // if the register has no use, then we do not allocate it
+  if (MRI->use_nodbg_empty(defReg)) {
+    regAssignments.insert(
+        std::pair<unsigned, StackAssignment>(defReg, {NO_ALLOCATION, {0}}));
+  }
+
   // LOCAL case
   if (defIsLocal(MI)) {
     // record assignment
@@ -200,12 +208,15 @@ void EVMStackAlloc::handleSingleUse(const MachineInstr &MI, const MachineOperand
   unsigned useReg = MOP.getReg();
 
   // get stack assignment
+  assert(regAssignments.find(useReg) != regAssignments.end());
+  StackAssignment SA = regAssignments.lookup(useReg);
+  // we also do not care if we has determined we do not allocate it.
+  if (SA.region == NO_ALLOCATION) {
+    return;
+  }
 
-  // update stack status
+  // update stack status if it is the last use.
   if (regIsLastUse(MI, useReg)) {
-    assert(regAssignments.find(useReg) != regAssignments.end());
-    StackAssignment SA = regAssignments.lookup(useReg);
-
     switch (SA.region) {
       case NONSTACK: {
         // release memory slot
@@ -223,11 +234,96 @@ void EVMStackAlloc::handleSingleUse(const MachineInstr &MI, const MachineOperand
         // TODO
         break;
       }
+      case L_STACK: {
+        // TODO
+        break;
+      }
       default: {
-        llvm_unreachable("Here be dragons.");
+        llvm_unreachable("Impossible case");
         break;
       }
     }
+  } else { // It is not the last use of a register.
+
+    // * If it is not the last use in the same BB, dup it.
+    // we only care about the last use in the BB, becuase only it matters
+    if (hasUsesAfterInBB(useReg, MI)) {
+      // TODO
+
+      llvm_unreachable("unimplemented");
+      return;
+    }
+
+    // * If each sucessor path has at least a use, dup it.
+    switch (SA.region) {
+      case NONSTACK: {
+        // If it is a memory variable, we can simply ignore it.
+        // do nothing
+        break;
+      }
+      case P_STACK: {
+        break;
+      }
+      case X_STACK: {
+        break;
+      }
+      case L_STACK: {
+        break;
+      }
+      default: {
+        llvm_unreachable("Impossible case");
+        break;
+      }
+    }
+    llvm_unreachable("unimplemented");
+  }
+}
+
+// return the allocated slot index of a memory
+unsigned EVMStackAlloc::allocateMemorySlot(unsigned reg) {
+  assert(reg != 0 && "Incoming registers cannot be zero.");
+  // first, find if there is an empty slot:
+  for (unsigned i = 0; i < memoryAssignment.size(); ++i) {
+    // here we let 0 represent an empty slot
+    if (memoryAssignment[i] == 0) {
+      memoryAssignment[i] = reg;
+      return i;
+    }
   }
 
+  // now we need to expand the memory:
+  memoryAssignment.push_back(reg);
+  return (memoryAssignment.size() - 1);
+}
+
+void EVMStackAlloc::deallocateMemorySlot(unsigned reg) {
+  for (unsigned i = 0; i < memoryAssignment.size(); ++i) {
+    if (reg == memoryAssignment[i]) {
+      memoryAssignment[i] = 0;
+      return;
+    }
+  }
+  llvm_unreachable("Cannot find allocated memory slot");
+}
+
+bool EVMStackAlloc::hasUsesAfterInBB(unsigned reg, const MachineInstr &MI) const {
+  const MachineBasicBlock* MBB = MI.getParent();
+
+  // if this is the only use, then for sure it is the last use in MBB.
+  assert(!MRI->use_nodbg_empty(reg) && "Empty use registers should not have a use.");
+  if (MRI->hasOneUse(reg)) {
+    return false;
+  }
+
+  // iterate over uses and see if any use exists in the same BB.
+  for (MachineRegisterInfo::use_instr_nodbg_iterator
+           Use = MRI->use_instr_nodbg_begin(reg),
+           E = MRI->use_instr_nodbg_end();
+       Use != E; ++Use) {
+    // TODO     
+    llvm_unreachable("unimplemented");
+  }
+
+  // we cannot find a use after it in BB
+  return false;
 }

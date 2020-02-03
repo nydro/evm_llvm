@@ -20,6 +20,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/CodeGen/LiveIntervals.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 
 #include <algorithm>
 #include <memory>
@@ -27,11 +28,12 @@
 namespace llvm {
 
 typedef enum {
-  P_STACK,  // parameter
-  X_STACK,  // transfer
-  E_STACK,  // evaluate
-  L_STACK,  // local
-  NONSTACK, // Allocate on memory
+  P_STACK,       // parameter
+  X_STACK,       // transfer
+  E_STACK,       // evaluate
+  L_STACK,       // local
+  NONSTACK,      // allocate on memory
+  NO_ALLOCATION, // do not allocate
 } StackRegion;
 
 // We also assign a memory slot
@@ -90,13 +92,21 @@ public:
 
   bool runOnModule(Module &M) override;
 
+  unsigned getNumOfAllocatedMemorySlots() const {
+    return memoryAssignment.size();
+  };
+
 private:
   LiveIntervals *LIS;
   MachineFunction *F;
+  MachineRegisterInfo *MRI;
 
   // record assignments of each virtual register 
   DenseMap<unsigned, StackAssignment> regAssignments;
   StackStatus currentStackStatus;
+  std::vector<unsigned> memoryAssignment;
+
+  void initializePass();
 
   // the pass to analyze a single basicblock
   void analyzeBasicBlock(MachineBasicBlock *MBB);
@@ -122,7 +132,9 @@ private:
 
   // for allocating 
   void deallocateMemorySlot(unsigned reg);
-  void allocateMemorySlot(unsigned reg);
+  unsigned allocateMemorySlot(unsigned reg);
+
+  bool hasUsesAfterInBB(unsigned reg, const MachineInstr &MI) const;
 };
 
 } // end namespace llvm
