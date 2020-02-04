@@ -28,9 +28,7 @@
 namespace llvm {
 
 typedef enum {
-  P_STACK,       // parameter
   X_STACK,       // transfer
-  E_STACK,       // evaluate
   L_STACK,       // local
   NONSTACK,      // allocate on memory
   NO_ALLOCATION, // do not allocate
@@ -48,10 +46,6 @@ typedef struct StackAssignment_ {
 // 
 // +----------------+
 // |                |
-// |  Evaluations   |
-// |                |
-// +----------------+
-// |                |
 // |  Locals        |
 // |                |
 // +----------------+
@@ -59,17 +53,11 @@ typedef struct StackAssignment_ {
 // |  Transfers     |
 // |                |
 // +----------------+
-// |                |
-// |  Parameters    |
-// |                |
-// +----------------+
 // 
 // So we can calculate an element's depth.
 
 typedef struct {
-  std::set<unsigned> P;     // Parameter Stack
   std::set<unsigned> X;     // Transfer Stack
-  std::set<unsigned> E;     // Evaluation Stack
   std::set<unsigned> L;     // Local Stack
   std::set<unsigned> M;     // Memory
 } StackStatus;
@@ -81,6 +69,12 @@ public:
   void computeEdgeSets(MachineFunction *MF);
   unsigned getEdgeSetIndex(Edge edge) const;
   unsigned getEdgeIndex(Edge edge) const;
+
+  void reset() {
+    edgeIndex2EdgeSet.clear();
+    edgeIndex.clear();
+  }
+
   void dump() const;
 
 private:
@@ -124,6 +118,9 @@ private:
   MachineFunction *F;
   MachineRegisterInfo *MRI;
 
+  // edge set information
+  EdgeSets edgeSets;
+
   // record assignments of each virtual register 
   DenseMap<unsigned, StackAssignment> regAssignments;
   StackStatus currentStackStatus;
@@ -165,9 +162,7 @@ private:
   void pruneStackDepth();
   unsigned findSpillingCandidate(std::set<unsigned> &vecRegs) const;
 
-  // compute edge sets for basic blocks.
-  void computeEdgeSets();
-
+  bool liveIntervalWithinSameEdgeSet(unsigned def);
 };
 
 } // end namespace llvm
