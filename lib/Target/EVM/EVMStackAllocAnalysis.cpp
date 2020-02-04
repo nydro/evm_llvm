@@ -27,6 +27,102 @@ char EVMStackAlloc::ID = 0;
 INITIALIZE_PASS(EVMStackAlloc, "evm-stackalloc",
                 "Stack Allocation Analysis", false, true)
 
+unsigned EdgeSets::getEdgeSetIndex(Edge edge) const {
+  // Linear search. Can improve it.
+  for (std::pair<unsigned, Edge> edgePair : edgeIndex) {
+    if (edgePair.second == edge) {
+      auto result = edgeIndex2EdgeSet.find(edgePair.first);
+      assert(result != edgeIndex2EdgeSet.end() && "Cannot find edge set!");
+      return result->second;
+    }
+  }
+  llvm_unreachable("Cannot find edge index.");
+}
+
+unsigned EdgeSets::getEdgeIndex(Edge edge) const {
+  // Linear search. Can improve it.
+  for (std::pair<unsigned, Edge> edgePair : edgeIndex) {
+    if (edgePair.second == edge) {
+      return edgePair.first;
+    }
+  }
+  llvm_unreachable("Cannot find edge index.");
+}
+
+
+void EdgeSets::collectEdges(MachineFunction *MF) {
+  std::set<MachineBasicBlock*> visited;
+  for (MachineBasicBlock &MBB : *MF) {
+    // Skip if we have visited this MBB:
+    if (visited.find(&MBB) != visited.end()) {
+      continue;
+    }
+
+    visited.insert(&MBB);
+    for (auto *NextMBB : MBB.successors()) {
+      unsigned key = edgeIndex.size();
+      assert(edgeIndex.find(key) == edgeIndex.end() &&
+             "Trying to emplace edge indexes.");
+      edgeIndex[edgeIndex.size()] = Edge(&MBB, NextMBB);
+    }
+  }
+}
+
+void EdgeSets::computeEdgeSets(MachineFunction *MF) {
+  // First, assign each edge with a number:
+  collectEdges(MF);
+
+  // Then, assign a new edge set for each of the edges
+  for (std::pair<unsigned, Edge> index : edgeIndex) {
+    edgeIndex2EdgeSet.insert({index.first, index.first});
+  }
+
+  // Criteria: Two MBBs share a same edge set if:
+  // 1. they have a common child.
+  // 2. they have a common parent.  
+  for (MachineBasicBlock &MBB : MF) {
+    // we have more than one predecessors
+    if (std::distance(MBB.pred_begin(), MBB.pred_end()) > 1) {
+      // all predecessors belong to an edge set
+      MachineBasicBlock *first = *MBB.pred_begin();
+
+      MachineBasicBlock::pred_iterator iter = ++MBB.pred_begin();
+      while (iter != MBB.pred_end()) {
+        mergeEdgeSets({first, &MBB}, {*iter, &MBB});
+      }
+    }
+    if (std::distance(MBB.succ_begin(), MBB.succ_end()) > 1) {
+      // all sucessors belong to an edge set
+      MachineBasicBlock *first = *MBB.succ_begin();
+
+      MachineBasicBlock::pred_iterator iter = ++MBB.succ_begin();
+      while (iter != MBB.succ_end()) {
+        mergeEdgeSets({&MBB, first}, {&MBB, *iter});
+      }
+    }
+  }
+}
+
+void EdgeSets::mergeEdgeSets(Edge edge1, Edge edge2) {
+  unsigned edgeSet1 = getEdgeSetIndex(edge1);
+  unsigned edgeSet2 = getEdgeSetIndex(edge2);
+
+  // return if they are already in the same edge set.
+  if (edgeSet1 == edgeSet2) {
+    return;
+  }
+
+  // change edgeSet2 to edgeSet1
+  for (std::pair<unsigned, unsigned> index2Set : edgeIndex2EdgeSet) {
+    if (index2Set.second == edgeSet2) {
+      edgeIndex2EdgeSet.insert_or_assign(index2Set.first, edgeSet1);
+    }
+  }
+  return;
+}
+
+
+
 void EVMStackAlloc::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
@@ -66,8 +162,15 @@ static unsigned getDefRegister(const MachineInstr &MI) {
 
 bool EVMStackAlloc::defIsLocal(const MachineInstr &MI) const {
   unsigned defReg = getDefRegister(MI);
+
+  // if there are multiple defines, then it is not local:
+  if (!MRI->hasOneDef(defReg)) {
+    return false;
+  }
+
+  // examine live range to see if it only covers a single MBB:
+
   const LiveInterval &LI = LIS->getInterval(defReg);
-  
   // if it has multiple VNs, ignore it.
   if (LI.segments.size() > 1) {
     return false;
@@ -82,52 +185,11 @@ bool EVMStackAlloc::defIsLocal(const MachineInstr &MI) const {
 }
 
 void EVMStackAlloc::analyzeBasicBlock(MachineBasicBlock *MBB) {
-
   // Iterate over the instructions in the basic block.
-  
   for (MachineInstr &MI : *MBB) {
     handleDef(MI);
-
-
-
-    // handle stack arguments
-    if (MI.getOpcode() == EVM::pSTACKARG_r) {
-        // assign them to parameter stack.
-        // TODO
-        unsigned defReg = getDefRegister(MI);
-        regAssignments.insert(
-            std::pair<unsigned, StackAssignment>(defReg, {P_STACK, {0}}));
-        continue;
-    }
-
-    // get register definition
-    if (MI.getDesc().getNumDefs() == 0) {
-      continue;
-    }
-    unsigned defReg = getDefRegister(MI);
-
-    if (defIsLocal(MI)) {
-      regAssignments.insert(
-          std::pair<unsigned, StackAssignment>(defReg, {E_STACK, {0}}));
-      continue;
-    }
-
-    // the register liveness expands multiple basicblocks.
-    // * If the def BB dominates all sucessor BB:
-    //     * If each leaf BB has a use: X_STACK
-    //     * If some leaf BB do not have a use:
-    //     * If a child's sucessor BB also have a use: (here we need to traverse the sucessors)
-    //         * DUP before use. <-- possibly need to mark the instruction
-    //         * POP if conditionally jump to an unused sucessor.
-    // * If the def BB is a sucessor of a use BB:
-    //     * we move it to NONSTACK.
-    // TODO
-
-    // finally, we have to allocate it on to memory.
-    regAssignments.insert(
-        std::pair<unsigned, StackAssignment>(defReg, {NONSTACK, {0}}));
+    handleUses(MI);
   }
-
 }
 
 StackAssignment EVMStackAlloc::getStackAssignment(unsigned reg) const {
@@ -149,7 +211,6 @@ unsigned EVMStackAlloc::getRegNumUses(unsigned reg) const {
 }
 
 void EVMStackAlloc::handleDef(const MachineInstr &MI) {
-  llvm_unreachable("unimplemented");
   unsigned defReg = getDefRegister(MI);
 
   // look into its liveness range, assign a stack.
@@ -181,15 +242,12 @@ void EVMStackAlloc::handleDef(const MachineInstr &MI) {
     return;
   } 
 
-  // TRANSFER case 
-  // TODO
-
-
-  // last resort: locate on memory
+  // Everything else goes to TRANSFER case 
   regAssignments.insert(
-      std::pair<unsigned, StackAssignment>(defReg, {NONSTACK, {0}}));
-  currentStackStatus.M.insert(defReg);
-  allocateMemorySlot(defReg);
+    std::pair<unsigned, StackAssignment>(defReg, {X_STACK, {0}})
+  );
+  currentStackStatus.X.insert(defReg);
+  return; 
 }
 
 void EVMStackAlloc::handleUses(const MachineInstr &MI) {
@@ -198,10 +256,7 @@ void EVMStackAlloc::handleUses(const MachineInstr &MI) {
   }
 }
 
-
 void EVMStackAlloc::handleSingleUse(const MachineInstr &MI, const MachineOperand &MOP) {
-  llvm_unreachable("unimplemented");
-
   if (!MOP.isReg()) {
     return;
   }
@@ -306,6 +361,7 @@ void EVMStackAlloc::deallocateMemorySlot(unsigned reg) {
   llvm_unreachable("Cannot find allocated memory slot");
 }
 
+/*
 bool EVMStackAlloc::hasUsesAfterInBB(unsigned reg, const MachineInstr &MI) const {
   const MachineBasicBlock* MBB = MI.getParent();
 
@@ -326,4 +382,32 @@ bool EVMStackAlloc::hasUsesAfterInBB(unsigned reg, const MachineInstr &MI) const
 
   // we cannot find a use after it in BB
   return false;
+}
+*/
+
+unsigned EVMStackAlloc::getCurrentStackDepth() const {
+  return currentStackStatus.L.size() + currentStackStatus.X.size();
+}
+
+void EVMStackAlloc::pruneStackDepth() {
+  unsigned stackDepth = getCurrentStackDepth();
+  if (stackDepth < MAXIMUM_STACK_DEPTH) {
+    return;
+  }
+  LLVM_DEBUG(dbgs() << "Stack Depth exceeds maximum, start pruning.");
+
+  // First look at transfer stack:
+  unsigned spillingCandidate = 0;
+  std::set<unsigned> *vecRegs;
+  if (currentStackStatus.X.size() != 0) {
+    vecRegs = &currentStackStatus.X;
+  } else {
+    vecRegs = &currentStackStatus.L;
+  }
+  spillingCandidate = findSpillingCandidate(*vecRegs);
+  allocateMemorySlot(spillingCandidate);
+}
+
+unsigned EVMStackAlloc::findSpillingCandidate(std::vector<unsigned> &vecRegs) const {
+  // TODO
 }

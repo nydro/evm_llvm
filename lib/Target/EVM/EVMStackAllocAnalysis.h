@@ -74,17 +74,40 @@ typedef struct {
   std::set<unsigned> M;     // Memory
 } StackStatus;
 
+// This class records basic block edge set information.
+class EdgeSets {
+public:
+  typedef std::pair<MachineBasicBlock *, MachineBasicBlock *> Edge;
+  void computeEdgeSets(MachineFunction *MF);
+  unsigned getEdgeSetIndex(Edge edge) const;
+  unsigned getEdgeIndex(Edge edge) const;
+  void dump() const;
+
+private:
+  // Index :: EdgeSet
+  std::map<unsigned, unsigned> edgeIndex2EdgeSet;   
+
+  // Index : Edge
+  std::map<unsigned, Edge> edgeIndex;
+
+  void collectEdges(MachineFunction *MF);
+
+  // given two edges, merge their edgesets.
+  void mergeEdgeSets(Edge edge1, Edge edge2);
+};
+
 class EVMStackAlloc : public ImmutablePass {
 public:
   static char ID;
+
+  // TODO: 15 is a bit arbitrary:
+  static const unsigned MAXIMUM_STACK_DEPTH = 15;
 
   EVMStackAlloc() : ImmutablePass(ID) {
     initializeEVMStackAllocPass(*PassRegistry::getPassRegistry());
   }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override;
-
-
 
   void allocateRegistersToStack(MachineFunction &F);
 
@@ -135,6 +158,16 @@ private:
   unsigned allocateMemorySlot(unsigned reg);
 
   bool hasUsesAfterInBB(unsigned reg, const MachineInstr &MI) const;
+
+  // test if we should spill some registers to memory
+  unsigned getCurrentStackDepth() const; 
+
+  void pruneStackDepth();
+  unsigned findSpillingCandidate(std::set<unsigned> &vecRegs) const;
+
+  // compute edge sets for basic blocks.
+  void computeEdgeSets();
+
 };
 
 } // end namespace llvm
