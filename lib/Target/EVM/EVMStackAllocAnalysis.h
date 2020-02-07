@@ -60,6 +60,11 @@ typedef struct {
   std::set<unsigned> X;     // Transfer Stack
   std::set<unsigned> L;     // Local Stack
   std::set<unsigned> M;     // Memory
+  void reset() {
+    X.clear();
+    L.clear();
+    M.clear();
+  }
 } StackStatus;
 
 // This class records basic block edge set information.
@@ -126,7 +131,10 @@ private:
   StackStatus currentStackStatus;
   std::vector<unsigned> memoryAssignment;
 
-  void initializePass();
+  // map: edgeset -> Stack Assignment
+  std::map<unsigned, std::vector<unsigned>> edgeset2assignment;
+
+  void initialize();
 
   // the pass to analyze a single basicblock
   void analyzeBasicBlock(MachineBasicBlock *MBB);
@@ -151,8 +159,10 @@ private:
   void removeRegisterAssignment(unsigned reg, StackRegion region);
 
   // for allocating 
-  void deallocateMemorySlot(unsigned reg);
   unsigned allocateMemorySlot(unsigned reg);
+  void deallocateMemorySlot(unsigned reg);
+
+  unsigned allocateXRegion(unsigned setIndex, unsigned reg);
 
   bool hasUsesAfterInBB(unsigned reg, const MachineInstr &MI) const;
 

@@ -127,12 +127,11 @@ void EVMStackAlloc::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
 
-void EVMStackAlloc::initializePass() {
+void EVMStackAlloc::initialize() {
   edgeSets.reset();
   regAssignments.clear();
-  currentStackStatus.L.clear();
-  currentStackStatus.X.clear();
-  currentStackStatus.M.clear();
+  currentStackStatus.reset();
+  edgeset2assignment.clear();
 }
 
 void EVMStackAlloc::allocateRegistersToStack(MachineFunction &F) {
@@ -203,13 +202,6 @@ unsigned EVMStackAlloc::getRegNumUses(unsigned reg) const {
 void EVMStackAlloc::handleDef(const MachineInstr &MI) {
   unsigned defReg = getDefRegister(MI);
 
-  // if the register has no use, then we do not allocate it
-  if (MRI->use_nodbg_empty(defReg)) {
-    regAssignments.insert(
-        std::pair<unsigned, StackAssignment>(defReg, {NO_ALLOCATION, 0}));
-    return;
-  }
-
   // Rule out case: multiple defs:
   // if there are multiple defines, then it goes to memory
   if (!MRI->hasOneDef(defReg)) {
@@ -218,21 +210,36 @@ void EVMStackAlloc::handleDef(const MachineInstr &MI) {
     return;
   }
 
+  // if the register has no use, then we do not allocate it
+  if (MRI->use_nodbg_empty(defReg)) {
+    regAssignments.insert(
+        std::pair<unsigned, StackAssignment>(defReg, {NO_ALLOCATION, 0}));
+    return;
+  }
+
   // LOCAL case
   if (defIsLocal(MI)) {
     // record assignment
     regAssignments.insert(
-        std::pair<unsigned, StackAssignment>(defReg, {L_STACK, {0}}));
+        std::pair<unsigned, StackAssignment>(defReg, {L_STACK, 0}));
     // update stack status
     currentStackStatus.L.insert(defReg); 
     return;
   } 
 
-  // All uses are in a same edge set, send it to Transfer Stack
+  // If all uses are in a same edge set, send it to Transfer Stack
+  // This could greatly benefit from a stack machine specific optimization.
   if (liveIntervalWithinSameEdgeSet(defReg)) {
-    regAssignments.insert(
-        std::pair<unsigned, StackAssignment>(defReg, {X_STACK, {0}}));
-    currentStackStatus.X.insert(defReg);
+    // it is a def register, so we only care about out-going edges.
+
+    // construct outgoing edges 
+
+    MachineBasicBlock* ThisMBB = const_cast<MachineInstr&>(MI).getParent(); 
+    for (MachineBasicBlock *NextMBB : ThisMBB->successors()) {
+      EdgeSets::Edge edge = {ThisMBB, NextMBB};
+      unsigned edgeIndex = edgeSets.getEdgeIndex(edge);
+      allocateXRegion(edgeIndex, defReg);
+    }
     return;
   }
 
@@ -248,8 +255,17 @@ bool EVMStackAlloc::liveIntervalWithinSameEdgeSet(unsigned defReg) {
   for (MachineOperand &use : MRI->use_operands(defReg)){
     MachineBasicBlock* MBB = use.getParent()->getParent();
 
+    // Look for predecessor edges
     for (MachineBasicBlock* Pred : MBB->predecessors()) {
-      unsigned setIndex = edgeSets.getEdgeSetIndex({Pred, MBB});
+      EdgeSets::Edge edge = {Pred, MBB};
+      unsigned setIndex = edgeSets.getEdgeSetIndex(edge);
+      edgeSetIndices.insert(setIndex);
+    }
+
+    // Look for successor edges
+    for (MachineBasicBlock* Succ : MBB->successors()) {
+      EdgeSets::Edge edge = {MBB, Succ};
+      unsigned setIndex = edgeSets.getEdgeSetIndex(edge);
       edgeSetIndices.insert(setIndex);
     }
   }
@@ -273,6 +289,7 @@ void EVMStackAlloc::handleSingleUse(const MachineInstr &MI, const MachineOperand
   if (!MOP.isReg()) {
     return;
   }
+
   unsigned useReg = MOP.getReg();
 
   // get stack assignment
@@ -366,6 +383,18 @@ void EVMStackAlloc::deallocateMemorySlot(unsigned reg) {
   llvm_unreachable("Cannot find allocated memory slot");
 }
 
+unsigned EVMStackAlloc::allocateXRegion(unsigned setIndex, unsigned reg) {
+  // Each entry of an edge set should contain the same
+  // X region layout
+  std::vector<unsigned> &x_region = edgeset2assignment[setIndex];
+
+  assert(std::find(x_region.begin(), x_region.end(), reg) == x_region.end() &&
+         "Inserting duplicate element in X region.");
+
+  x_region.push_back(reg);
+  return x_region.size();
+}
+
 /*
 bool EVMStackAlloc::hasUsesAfterInBB(unsigned reg, const MachineInstr &MI) const {
   const MachineBasicBlock* MBB = MI.getParent();
@@ -414,5 +443,5 @@ void EVMStackAlloc::pruneStackDepth() {
 }
 
 unsigned EVMStackAlloc::findSpillingCandidate(std::set<unsigned> &vecRegs) const {
-  // TODO
+  llvm_unreachable("unimplemented");
 }
