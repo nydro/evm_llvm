@@ -39,7 +39,8 @@ typedef struct StackAssignment_ {
   StackRegion region;
   unsigned numUses;
   // For memory allocation
-  unsigned MemorySlot;
+  unsigned memorySlot;
+  unsigned stackSlot;
 } StackAssignment;
 
 // The stack arrangement is as follows:
@@ -55,17 +56,6 @@ typedef struct StackAssignment_ {
 // +----------------+
 // 
 // So we can calculate an element's depth.
-
-typedef struct {
-  std::set<unsigned> X;     // Transfer Stack
-  std::set<unsigned> L;     // Local Stack
-  std::set<unsigned> M;     // Memory
-  void reset() {
-    X.clear();
-    L.clear();
-    M.clear();
-  }
-} StackStatus;
 
 // This class records basic block edge set information.
 class EdgeSets {
@@ -118,7 +108,23 @@ public:
     return memoryAssignment.size();
   };
 
+  void getXStackRegion(unsigned edgeSetIndex,
+                       std::vector<unsigned> xRegion) const;
+  
+  EdgeSets& getEdgeSets() const;
+
 private:
+  typedef struct {
+    std::set<unsigned> X; // Transfer Stack
+    std::set<unsigned> L; // Local Stack
+    std::set<unsigned> M; // Memory
+    void reset() {
+      X.clear();
+      L.clear();
+      M.clear();
+    }
+  } StackStatus;
+
   LiveIntervals *LIS;
   MachineFunction *F;
   MachineRegisterInfo *MRI;

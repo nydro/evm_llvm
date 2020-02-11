@@ -121,8 +121,6 @@ void EdgeSets::mergeEdgeSets(Edge edge1, Edge edge2) {
   return;
 }
 
-
-
 void EVMStackAlloc::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
@@ -177,7 +175,6 @@ void EVMStackAlloc::analyzeBasicBlock(MachineBasicBlock *MBB) {
   // Iterate over the instructions in the basic block.
   for (MachineInstr &MI : *MBB) {
     handleDef(MI);
-    handleUses(MI);
   }
 }
 
@@ -231,8 +228,6 @@ void EVMStackAlloc::handleDef(const MachineInstr &MI) {
   // This could greatly benefit from a stack machine specific optimization.
   if (liveIntervalWithinSameEdgeSet(defReg)) {
     // it is a def register, so we only care about out-going edges.
-
-    // construct outgoing edges 
 
     MachineBasicBlock* ThisMBB = const_cast<MachineInstr&>(MI).getParent(); 
     for (MachineBasicBlock *NextMBB : ThisMBB->successors()) {
@@ -444,4 +439,13 @@ void EVMStackAlloc::pruneStackDepth() {
 
 unsigned EVMStackAlloc::findSpillingCandidate(std::set<unsigned> &vecRegs) const {
   llvm_unreachable("unimplemented");
+}
+
+void EVMStackAlloc::getXStackRegion(unsigned edgeSetIndex,
+                                    std::vector<unsigned> xRegion) const {
+  // order is important
+  assert(edgeset2assignment.find(edgeSetIndex) != edgeset2assignment.end() &&
+         "Cannot find edgeset index!");
+  std::copy(edgeset2assignment.begin(), edgeset2assignment.end(), xRegion);
+  return;
 }

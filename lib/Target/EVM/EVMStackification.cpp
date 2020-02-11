@@ -15,6 +15,8 @@
 #include "EVMSubtarget.h"
 #include "EVMRegisterInfo.h"
 #include "EVMTargetMachine.h"
+#include "EVMStackAllocAnalysis.h"
+
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/Support/Debug.h"
@@ -39,24 +41,40 @@ public:
   void dup(unsigned depth);
   void push(unsigned reg);
   void pop();
-  unsigned getStackDepth();
-  unsigned get(unsigned depth);
+
+  unsigned get(unsigned depth) const;
   void dump() const;
+
+  unsigned getSizeOfXRegion() const {
+    return sizeOfXRegion;
+  }
+  unsigned getSizeOfLRegion() const {
+    return getStackDepth() - sizeOfXRegion;
+  }
+
+  // Stack depth = size of X + size of L
+  unsigned getStackDepth() const;
+
+  void instantiateXRegionStack(std::vector<unsigned> &stack) {
+    assert(getStackDepth() == 0);
+    std::copy(stack.begin(), stack.end(), stackElements);
+    sizeOfXRegion = stack.size();
+  }
 
 private:
   // stack arrangements.
-  // TODO: think of a way to do it.
   std::vector<unsigned> stackElements;
 
-  // TODO: use DUPs instead of DUP1 + SWAPx for uses.
+  unsigned sizeOfXRegion;
+
   DenseMap<unsigned, unsigned> remainingUses;
 };
 
-unsigned StackStatus::getStackDepth() {
+unsigned StackStatus::getStackDepth() const {
   return stackElements.size();
 }
 
-unsigned StackStatus::get(unsigned depth) {
+unsigned StackStatus::get(unsigned depth) const {
   return stackElements.rbegin()[depth];
 }
 
@@ -107,7 +125,7 @@ void StackStatus::push(unsigned reg) {
 
 void StackStatus::dump() const {
   LLVM_DEBUG({
-    dbgs() << "  Stack : ";
+    dbgs() << "  Stack :  xRegion_size = " << getSizeOfXRegion() << "\n";
     unsigned counter = 0;
     for (auto i = stackElements.rbegin(), e = stackElements.rend(); i != e; ++i) {
       unsigned idx = Register::virtReg2Index(*i);
@@ -130,6 +148,7 @@ public:
     AU.addRequired<LiveIntervals>();
     AU.addRequired<MachineDominatorTree>();
     AU.addRequired<MachineDominanceFrontier>();
+    AU.addRequired<EVMStackAlloc>();
     AU.addPreserved<MachineDominatorTree>();
     MachineFunctionPass::getAnalysisUsage(AU);
   }
@@ -145,18 +164,26 @@ private:
   bool canStackifyReg(unsigned reg, MachineInstr &MI) const;
   unsigned findNumOfUses(unsigned reg) const;
 
-  void insertPop(MachineInstr &MI, bool insertAfter = true);
-  void insertDup(unsigned index, MachineInstr &MI, bool insertAfter);
-  void insertSwap(unsigned index, MachineInstr &MI, bool insertAfter);
+  void insertPop(MachineInstr &MI, StackStatus& ss);
+  void insertDupBefore(unsigned index, MachineInstr &MI, StackStatus &ss);
+  void insertSwapBefore(unsigned index, MachineInstr &MI, StackStatus &ss);
 
   void insertLoadFromMemoryBefore(unsigned reg, MachineInstr& MI);
+  void insertLoadFromMemoryBefore(unsigned reg, MachineInstr& MI, unsigned memSlot);
   void insertStoreToMemory(unsigned reg, MachineInstr &MI, bool insertAfter);
+  void insertStoreToMemoryAfter(unsigned reg, MachineInstr &MI, unsigned memSlot);
+
   void bringOperandToTop(StackStatus &ss, unsigned depth, MachineInstr &MI);
 
   void handleIrregularInstruction(StackStatus &ss, MachineInstr &MI);
 
   void handleEntryMBB(StackStatus &ss, MachineBasicBlock &MBB);
-  void handleMBB(StackStatus &ss, MachineBasicBlock &MBB);
+  void handleMBB(MachineBasicBlock &MBB);
+
+  EVMStackAlloc *getStackAllocAnalysis();
+  bool isLastUse(MachineOperand &MO) const;
+
+  void reconstructStackStatus(StackStatus &ss, MachineBasicBlock &MBB);
 
   DenseMap<unsigned, unsigned> reg2index;
 
@@ -164,6 +191,7 @@ private:
   MachineRegisterInfo *MRI;
   LiveIntervals *LIS;
   EVMMachineFunctionInfo *MFI;
+  EVMStackAlloc *ESA;
 };
 } // end anonymous namespace
 
@@ -233,75 +261,71 @@ unsigned EVMStackification::findNumOfUses(unsigned reg) const {
   return numUses;
 }
 
-void EVMStackification::insertPop(MachineInstr& MI, bool insertAfter) {
+void EVMStackification::insertPop(MachineInstr &MI, StackStatus &ss) {
   MachineBasicBlock *MBB = MI.getParent();
   MachineFunction &MF = *MBB->getParent();
   MachineInstrBuilder pop = BuildMI(MF, MI.getDebugLoc(), TII->get(EVM::POP_r));
-  if (insertAfter) {
-    MBB->insertAfter(MachineBasicBlock::iterator(MI), pop);
-  } else {
-    MBB->insert(MachineBasicBlock::iterator(MI), pop);
-  }
+  MBB->insertAfter(MachineBasicBlock::iterator(MI), pop);
+
+  ss.pop();
 }
 
-void EVMStackification::insertDup(unsigned index, MachineInstr &MI, bool insertAfter = true) {
+void EVMStackification::insertDupBefore(unsigned index, MachineInstr &MI, StackStatus &ss) {
   MachineBasicBlock *MBB = MI.getParent();
   MachineFunction &MF = *MBB->getParent();
   MachineInstrBuilder dup = BuildMI(MF, MI.getDebugLoc(), TII->get(EVM::DUP_r)).addImm(index);
-  if (insertAfter) {
-    MBB->insertAfter(MachineBasicBlock::iterator(MI), dup);
-  } else {
-    MBB->insert(MachineBasicBlock::iterator(MI), dup);
-  }
+  MBB->insert(MachineBasicBlock::iterator(MI), dup);
+  ss.dup(index);
 }
 
 // The skip here means how many same items needs to be skipped.
-static bool findRegDepthOnStack(StackStatus &ss, unsigned reg, unsigned *depth,
-                                unsigned skip = 0) {
+static unsigned findRegDepthOnStack(StackStatus &ss, unsigned reg) {
   unsigned curHeight = ss.getStackDepth();
+  unsigned depth = 0;
 
   for (unsigned d = 0; d < curHeight; ++d) {
     unsigned stackReg = ss.get(d);
     if (stackReg == reg) {
-      if (skip != 0) {
-        // skipping register
-        --skip;
-      } else {
-        *depth = d;
+        depth = d;
         LLVM_DEBUG({
-          unsigned idx = Register::virtReg2Index(reg);
-          dbgs() << "  Found %" << idx << " at depth: " << *depth << "\n";
+          dbgs() << "  Found %" << Register::virtReg2Index(reg)
+                 << " at depth: " << depth << "\n";
         });
-        return true;
-      }
+        return depth;
     }
   }
-
-  return false;
+  llvm_unreachable("Cannot find register on stack");
 }
 
-void EVMStackification::insertSwap(unsigned index, MachineInstr &MI,
-                                         bool insertAfter = false) {
+void EVMStackification::insertSwapBefore(unsigned index, MachineInstr &MI,
+                                         StackStatus &ss) {
   MachineBasicBlock *MBB = MI.getParent();
   MachineInstrBuilder swap =
       BuildMI(*MBB->getParent(), MI.getDebugLoc(), TII->get(EVM::SWAP_r))
           .addImm(index);
-  if (insertAfter) {
-    MBB->insertAfter(MachineBasicBlock::iterator(MI), swap);
-  } else {
-    MBB->insert(MachineBasicBlock::iterator(MI), swap);
-  }
+  MBB->insert(MachineBasicBlock::iterator(MI), swap);
+  ss.swap(index);
 }
 
-void EVMStackification::insertLoadFromMemoryBefore(unsigned reg, MachineInstr &MI) {
-  MachineBasicBlock *MBB = MI.getParent();
+void EVMStackification::insertLoadFromMemoryBefore(unsigned reg,
+                                                   MachineInstr &MI,
+                                                   unsigned memSlot) {
+  LLVM_DEBUG(dbgs() << "  %" << Register::virtReg2Index(reg) << " <= GETLOCAL("
+                    << index << ") inserted.\n");
 
-  // deal with physical register.
-  unsigned index = MFI->get_memory_index(reg);
-  unsigned ridx = Register::virtReg2Index(reg);
-  LLVM_DEBUG(dbgs() << "  %" << ridx << " <= GETLOCAL(" << index << ") inserted.\n");
-  BuildMI(*MBB, MI, MI.getDebugLoc(), TII->get(EVM::pGETLOCAL_r), reg)
-      .addImm(index);
+  BuildMI(*MI.getParent(), MI, MI.getDebugLoc(), TII->get(EVM::pGETLOCAL_r), reg)
+      .addImm(memSlot);
+}
+
+void EVMStackification::insertStoreToMemoryAfter(unsigned reg, MachineInstr &MI, unsigned memSlot) {
+  MachineBasicBlock *MBB = MI.getParent();
+  MachineFunction &MF = *MBB->getParent();
+
+  MachineInstrBuilder putlocal =
+      BuildMI(MF, MI.getDebugLoc(), TII->get(EVM::pPUTLOCAL_r)).addReg(reg).addImm(memSlot);
+  MBB->insertAfter(MachineBasicBlock::iterator(MI), putlocal);
+  LLVM_DEBUG(dbgs() << "  PUTLOCAL(" << index << ") => %" << memSlot << 
+                 "  is inserted.\n");
 }
 
 void EVMStackification::insertStoreToMemory(unsigned reg, MachineInstr &MI, bool InsertAfter = true) {
@@ -372,10 +396,120 @@ void EVMStackification::handleIrregularInstruction(StackStatus &ss,
 
 }
 
+bool EVMStackification::isLastUse(MachineOperand &MO) const {
+  assert(MO.isReg() && "Operand my be a register");
+  unsigned useReg = MO.getReg();
+
+  // unfortunately, the <kill> flag is optional.
+  if (MO.isKill()) {
+    return true;
+  }
+
+  MachineInstr *MI = MO.getParent();
+  MachineBasicBlock* MBB = MI->getParent();
+  const LiveInterval &LI = LIS->getInterval(useReg);
+
+  // It is not the last use in current MBB:
+  SlotIndex MBBEndIndex = LIS->getMBBEndIdx(MBB);
+  SlotIndex regSI = LIS->getInstructionIndex(*MI);
+  if (LI.find(regSI)) {
+
+  }
+
+  // If it is the last use of this MBB, then make sure:
+  // Jumping out of MBB will go out of liveness scope .
+  for (MachineBasicBlock *NextMBB : MBB->successors()) {
+    SlotIndex NextMBBBeginIndex = LIS->getMBBStartIdx(NextMBB);
+    if (LI.liveAt(NextMBBBeginIndex)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
+
 void EVMStackification::handleUses(StackStatus &ss, MachineInstr& MI) {
+
+  // calculate number of register uses
+  unsigned numUsesInMI = 0;
+  for (MachineOperand &MO : MI.uses()) {
+    if (MO.isReg()) {
+      ++numUsesInMI;
+    }
+  }
+
+   std::distance(MI.uses.begin(), MI.uses.end());
+  for (MachineOperand& MO : reverse(MI.uses())) {
+    // skip non-register operands
+    if (!MO.isReg()) {
+      continue;
+    }
+
+    unsigned useReg = MO.getReg();
+    StackAssignment sa = ESA->getStackAssignment(useReg);
+
+    switch (sa.region) {
+      default:
+      llvm_unreachable("Impossible switch.");
+      break;
+      case X_STACK:
+      case L_STACK:
+      llvm_unreachable("Impossible path.");
+
+      if (numUsesInMI == 1) {
+        unsigned depth = findRegDepthOnStack(ss, useReg);
+        if (depth != 0) {
+          if (isLastUse(MO)) {
+            insertSwapBefore(depth, MI, ss);
+          } else {
+            insertDupBefore(depth, MI, ss);
+          }
+        }
+      }
+      
+      // if 
+      break;
+      case NONSTACK:
+      unsigned slot = sa.memorySlot;
+      insertLoadFromMemoryBefore(useReg, MI, slot);
+      break;
+    }
+
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // TODO: do not support more than 2 uses in an MI. We need scheduler to help
   // us make sure that the registers are on stack top.
- 
   const auto &uses = MI.uses();
   unsigned numUsesInMI = 0;
 
@@ -390,7 +524,6 @@ void EVMStackification::handleUses(StackStatus &ss, MachineInstr& MI) {
   } else {
     numUsesInMI = std::distance(uses.begin(), uses.end());
   }
-
 
 
   // Case 1: only 1 use
@@ -629,8 +762,6 @@ void EVMStackification::handleUses(StackStatus &ss, MachineInstr& MI) {
 }
 
 void EVMStackification::handleDef(StackStatus &ss, MachineInstr& MI) {
-  // Look up LiveInterval info.
-  // Insert DUP if it is necessary.
   unsigned numDefs = MI.getDesc().getNumDefs();
   assert(numDefs <= 1 && "more than one defs");
 
@@ -643,44 +774,32 @@ void EVMStackification::handleDef(StackStatus &ss, MachineInstr& MI) {
   assert(def.isReg() && def.isDef());
   unsigned defReg = def.getReg();
 
-  // insert pop if it does not have def.
-  bool IsDead = MRI->use_empty(defReg);
-  if (IsDead) {
-    LLVM_DEBUG({ dbgs() << "  Def's use is empty, insert POP after.\n"; });
-    insertPop(MI);
-    return;
-  }
+  StackAssignment sa = ESA->getStackAssignment(defReg);
 
-  if (!canStackifyReg(defReg, MI)) {
-    assert(!Register::isPhysicalRegister(defReg));
-
-    LLVM_DEBUG({
-      unsigned ridx = Register::virtReg2Index(defReg);
-      dbgs() << "  Cannot stackify %" << ridx << "\n";
-    });
-
-    MFI->allocate_memory_index(defReg);
-    insertStoreToMemory(defReg, MI);
-    return;
-  }
-
-  // stackify the register
-  assert(!MFI->isVRegStackified(defReg));
-  MFI->stackifyVReg(defReg);
-
-  LLVM_DEBUG({
-    unsigned ridx = Register::virtReg2Index(defReg);
-    dbgs() << "  Reg %" << ridx << " is stackified.\n";
-  });
-
+  // First we push it to stack
   ss.push(defReg);
 
-  unsigned numUses = std::distance(MRI->use_begin(defReg), MRI->use_end());
-  for (unsigned i = 1; i < numUses; ++i) {
-    insertDup(1, MI);
-    ss.dup(0);
+  switch (sa.region) {
+    default:
+      llvm_unreachable("Impossible path");
+      break;
+    case NO_ALLOCATION:
+      assert(MRI->use_empty(defReg));
+      insertPop(MI, ss);
+      break;
+    case X_STACK:
+      unsigned x_slot = sa.stackSlot;
+      // we should ensure that the order is the same as the result of
+      // analysis
+      llvm_unreachable("unimplemented");
+      break;
+    case L_STACK:
+      llvm_unreachable("unimplemented");
+      break;
+    case NONSTACK:
+      insertStoreToMemoryAfter(defReg, MI, sa.memorySlot);
+      break; 
   }
-
 }
 
 typedef struct {
@@ -809,8 +928,32 @@ void EVMStackification::handleEntryMBB(StackStatus &ss, MachineBasicBlock &MBB) 
 
 }
 
-void EVMStackification::handleMBB(StackStatus &ss, MachineBasicBlock &MBB) {
+void EVMStackification::reconstructStackStatus(StackStatus &ss, MachineBasicBlock &MBB) {
+  // find the incoming edgeset:
+
+  // For entry block, everything is empty.
+  if (MBB.pred_empty()) {
     assert(ss.getStackDepth() == 0);
+    return;
+  }
+
+  std::vector<unsigned> xRegion;
+
+  EdgeSets::Edge edge = {*MBB.predecessors().begin(), &MBB};
+  unsigned ESIndex = ESA->getEdgeSets.getEdgeSetIndex(edge);
+  ESA->getXStackRegion(ESIndex, xRegion);
+
+  ss.instantiateXRegionStack(xRegion);
+
+  LLVM_DEBUG(dbgs() << "Stack's X region at beginning of BB: \n";);
+  ss.dump();
+}
+
+void EVMStackification::handleMBB(MachineBasicBlock &MBB) {
+    // Firstly, we have to retrieve/reconstruct the stack status
+    StackStatus ss;
+    reconstructStackStatus(ss, MBB);
+
     // The scheduler has already set the sequence for us. We just need to
     // iterate over by order.
     for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end();
@@ -822,13 +965,7 @@ void EVMStackification::handleMBB(StackStatus &ss, MachineBasicBlock &MBB) {
         MI.dump();
       });
 
-      // If the Use is stackified:
-      // insert SWAP if necessary
       handleUses(ss, MI);
-
-      // If the Def is able to be stackified:
-      // 1. mark VregStackified
-      // 2. insert DUP if necessary
       handleDef(ss, MI);
 
       ss.dump();
@@ -841,25 +978,9 @@ bool EVMStackification::runOnMachineFunction(MachineFunction &MF) {
            << "********** Function: " << MF.getName() << '\n';
   });
 
-  // Prepare
-
-
-  // iterate BBs from the entry point.
-
-  // For each BBs, examine the live-ins.
-  // For each MI in BB:
-  //  For each DEF:
-  //   1. if it is assigned on memory, insert store
-  //   2. if it is assigned to P_stack:
-  //   3. if it is assigned to L_stack: do nothing, leave it on stack.
-  //   4. if it is assigned to X_stack: 
-  //  For each USE:
-  //   1. if it is NONSTACK: insert load
-  //   2. if it is not the last USE:
-  //     Insert DUP.
-  //       If a sucessor is outside the liveness range: POP it.
-  //       If a sucessor is inside the liveness range: need to find a place to pop it. (TODO: Investigate)
-  //   3. if it is the last USE: insert SWAP
+  for (MachineBasicBlock &MBB : MF) {
+    handleMBB(MBB);
+  }
 
 
   return true;
